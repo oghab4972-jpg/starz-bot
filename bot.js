@@ -64,6 +64,12 @@ const FALLBACK_USDT_TOMAN = 65000;
  */
 const FALLBACK_TON_USD = 5.5;
 
+/**
+ * Fallback price for TRX to USD in case Binance API is unreachable.
+ * @constant {number}
+ */
+const FALLBACK_TRX_USD = 0.25;
+
 // ============================================================================
 // SYSTEM LOGGING UTILITY (EXPANDED FOR ENTERPRISE TRACING)
 // ============================================================================
@@ -234,6 +240,10 @@ function getUserDataById(userId) {
             waitingForTonMemoChoice: false,
             waitingForTonMemoInput: false,
 
+            // TRX Specific States
+            waitingForTrxAmount: false,
+            waitingForTrxWallet: false,
+
             // BOOST Specific States
             waitingForBoostLink: false,
             waitingForBoostMonths: false,
@@ -271,6 +281,11 @@ function getUserDataById(userId) {
             tonPricePerUnit: 0,
             tonWalletAddress: '',
             tonMemo: 'ندارد',
+
+            // TRX Session Variables
+            trxAmount: 0,
+            trxPricePerUnit: 0,
+            trxWalletAddress: '',
 
             // BOOST Session Variables
             boostLink: '',
@@ -402,7 +417,7 @@ async function setReaction(chatId, messageId) {
 }
 
 // ============================================================================
-// FINANCIAL API INTEGRATIONS
+// FINANCIAL API INTEGRATIONS (BINANCE & WALLEX)
 // ============================================================================
 
 async function getUsdtToToman() {
@@ -435,9 +450,9 @@ async function fetchStarsPrice() {
     return Math.round(starToman);
 }
 
-async function getBinanceTonPriceUsd() {
+async function getBinancePriceUsd(symbol) {
     return new Promise((resolve) => {
-        https.get('https://api.binance.com/api/v3/ticker/price?symbol=TONUSDT', { headers: { 'User-Agent': 'Mozilla/5.0 StarzBot' } }, (res) => {
+        https.get(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`, { headers: { 'User-Agent': 'Mozilla/5.0 StarzBot' } }, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
@@ -446,14 +461,14 @@ async function getBinanceTonPriceUsd() {
                     if (parsed && parsed.price) {
                         resolve(parseFloat(parsed.price));
                     } else {
-                        resolve(FALLBACK_TON_USD);
+                        resolve(symbol === 'TRXUSDT' ? FALLBACK_TRX_USD : FALLBACK_TON_USD);
                     }
                 } catch (e) {
-                    resolve(FALLBACK_TON_USD);
+                    resolve(symbol === 'TRXUSDT' ? FALLBACK_TRX_USD : FALLBACK_TON_USD);
                 }
             });
         }).on('error', () => {
-            resolve(FALLBACK_TON_USD);
+            resolve(symbol === 'TRXUSDT' ? FALLBACK_TRX_USD : FALLBACK_TON_USD);
         });
     });
 }
@@ -461,10 +476,19 @@ async function getBinanceTonPriceUsd() {
 async function fetchTonData() {
     const rawUsdt = await getUsdtToToman();
     const usdtToman = rawUsdt + 1000;
-    const tonUsd = await getBinanceTonPriceUsd();
+    const tonUsd = await getBinancePriceUsd('TONUSDT');
     const tonToman = tonUsd * usdtToman;
     const finalPrice = Math.round(tonToman + 20000);
     return { tonUsd: tonUsd.toFixed(2), finalPrice, usdtToman };
+}
+
+async function fetchTrxData() {
+    const rawUsdt = await getUsdtToToman();
+    const usdtToman = rawUsdt + 1000;
+    const trxUsd = await getBinancePriceUsd('TRXUSDT');
+    const trxToman = trxUsd * usdtToman;
+    const finalPrice = Math.round(trxToman + 5000);
+    return { trxUsd: trxUsd.toFixed(4), finalPrice, usdtToman };
 }
 
 // ============================================================================
@@ -490,9 +514,9 @@ function getShopKeyboard() {
             keyboard: [
                 [{ text: '📦 سفارش های اخیر من' }],
                 [{ text: '⭐️ استارز' }, { text: '✨ بوست تلگرام' }],
-                [{ text: '💠 خرید ارز تون' }],
+                [{ text: '💠 خرید ارز تون' }, { text: '💠 خرید ارز ترون ( TRX )' }],
                 [{ text: '🎁 گیفت استارزی' }],
-                [{ text: '💫 ری اکشن استارزی' }, { text: '🎉 گیواوی استارزی' }],
+                [{ text: '💫 ری اکشن استارزی' }],
                 [{ text: 'برگشت ↩️' }]
             ],
             resize_keyboard: true
@@ -592,10 +616,13 @@ async function showBoostInvoice(chatId, userData) {
 }
 
 async function showGiftInvoice(chatId, userData) {
-    const unitPrice = userData.selectedGiftStars * 3900; 
-    const totalPrice = unitPrice * userData.giftCount;
+    const rawUsdtToman = await getUsdtToToman();
+    const adjustedUsdtToman = rawUsdtToman + 1000;
+    const starziUsdPrice = userData.selectedGiftStars * STAR_USD;
+    const starziTomanPerUnit = starziUsdPrice * adjustedUsdtToman + 1000;
+    const totalPrice = Math.round(starziTomanPerUnit * userData.giftCount);
+    
     let discountVal = 0;
-
     if (userData.appliedDiscountPercent > 0) {
         const codeObj = db.discountCodes[userData.appliedDiscountCode];
         if (!codeObj || codeObj.restriction === 'gift_stars' || codeObj.restriction === null) {
@@ -608,7 +635,8 @@ async function showGiftInvoice(chatId, userData) {
 
     const invoiceMsg = 
         `<b>فاکتور خرید گیفت</b>\n\n` +
-        `مقدار خرید: ${escapeHTML(userData.selectedGiftName)}\n` +
+        `مقدار خرید: ${escapeHTML(userData.selectedGiftName)} (${userData.selectedGiftStars} استارز)\n` +
+        `تعداد: ${userData.giftCount}\n` +
         `یوزر دریافت‌کننده: @${escapeHTML(userData.recipientUsername)}\n\n` +
         `گیفت هاید: ${userData.isHided ? 'بله' : 'خیر'}\n` +
         `کامنت: ${escapeHTML(userData.commentText)}\n\n` +
@@ -646,6 +674,31 @@ async function showTonInvoice(chatId, userData) {
         reply_markup: {
             keyboard: [
                 [{ text: '✅ تایید تون' }, { text: '❌ لغو خرید' }],
+                [{ text: '💳 اعمال کد تخفیف' }],
+                [{ text: 'برگشت ↩️' }]
+            ],
+            resize_keyboard: true
+        }
+    };
+    await safeSendMessage(chatId, invoiceMsg, invoiceKeyboard);
+}
+
+async function showTrxInvoice(chatId, userData) {
+    const totalPrice = Math.round(userData.trxAmount * userData.trxPricePerUnit);
+    userData.lastAmount = totalPrice;
+    saveDatabase();
+
+    const invoiceMsg = 
+        `<b>[ فاکتور خرید ارز ترون (TRX) ]</b>\n\n` +
+        `مقدار خرید: ${userData.trxAmount} ترون\n` +
+        `آدرس ولت: <code>${escapeHTML(userData.trxWalletAddress)}</code>\n\n` +
+        `مبلغ نهایی: <b>${totalPrice.toLocaleString()} تومان</b>\n\n` +
+        `در صورتی که جزئیات بالا مورد تأیید شماست ، روی دکمه تایید کلیک کنید.`;
+
+    const invoiceKeyboard = {
+        reply_markup: {
+            keyboard: [
+                [{ text: '✅ تایید ترون' }, { text: '❌ لغو خرید' }],
                 [{ text: '💳 اعمال کد تخفیف' }],
                 [{ text: 'برگشت ↩️' }]
             ],
@@ -725,6 +778,9 @@ bot.on('message', async (msg) => {
         userData.waitingForTonWallet = false;
         userData.waitingForTonMemoChoice = false;
         userData.waitingForTonMemoInput = false;
+
+        userData.waitingForTrxAmount = false;
+        userData.waitingForTrxWallet = false;
         
         userData.waitingForBoostLink = false;
         userData.waitingForBoostMonths = false;
@@ -1134,6 +1190,27 @@ bot.on('message', async (msg) => {
         return;
     }
 
+    if (userData.waitingForTrxAmount && text) {
+        if (text === 'محاسبه با موجودی من 🔄') {
+            const balanceTrx = (userData.wallet / userData.trxPricePerUnit).toFixed(2);
+            await safeSendMessage(chatId, `موجودی شما: ${userData.wallet.toLocaleString()} تومان\nمعادل ${balanceTrx} ترون.\nلطفاً تعداد ترون را وارد کنید:`, backKeyboard);
+            return;
+        }
+
+        const trxInput = parseFloat(text);
+        if (isNaN(trxInput) || trxInput < 1) {
+            await safeSendMessage(chatId, '❌ حداقل خرید ۱ ترون است.', backKeyboard);
+            return;
+        }
+        userData.trxAmount = trxInput;
+        userData.waitingForTrxAmount = false;
+        userData.waitingForTrxWallet = true;
+        saveDatabase();
+
+        await safeSendMessage(chatId, `لطفاً آدرس ولت ترون (TRX) خود را ارسال کنید:`, backKeyboard);
+        return;
+    }
+
     if (userData.waitingForReactionCount && text) {
         if (text === 'محاسبه با موجودی من 🔄') {
             const maxR = Math.floor(userData.wallet / userData.starPricePerUnit);
@@ -1185,6 +1262,15 @@ bot.on('message', async (msg) => {
             }
         };
         await safeSendMessage(chatId, 'آیا برای واریز تون کامنت (ممو) دارید؟', memoKeyboard);
+        return;
+    }
+
+    if (userData.waitingForTrxWallet && text) {
+        userData.trxWalletAddress = text.trim();
+        userData.waitingForTrxWallet = false;
+        userData.currentShopState = 'trx_invoice';
+        saveDatabase();
+        await showTrxInvoice(chatId, userData);
         return;
     }
 
@@ -1262,6 +1348,7 @@ bot.on('message', async (msg) => {
         if (userData.currentShopState === 'gift_invoice') await showGiftInvoice(chatId, userData);
         else if (userData.currentShopState === 'star_invoice') await showStarInvoice(chatId, userData);
         else if (userData.currentShopState === 'ton_invoice') await showTonInvoice(chatId, userData);
+        else if (userData.currentShopState === 'trx_invoice') await showTrxInvoice(chatId, userData);
         else if (userData.currentShopState === 'reaction_invoice') await showReactionInvoice(chatId, userData);
         else if (userData.currentShopState === 'boost_invoice') await showBoostInvoice(chatId, userData);
         return;
@@ -1315,7 +1402,16 @@ bot.on('message', async (msg) => {
         const userConfirmMsg = `سفارش ثبت شد و در انتظار واریز است.\n\nکد پیگیری: <code>${trackingCode}</code>\nمقدار: ${userData.starCount} استارز\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
         await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
 
-        const adminOrderMsg = `<b>[ سفارش جدید استارز ]</b>\n\nکاربر: ${escapeHTML(userData.firstName)} (${chatId})\nکد: <code>${trackingCode}</code>\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
+        const adminOrderMsg = 
+            `<b>[ سفارش جدید استارز ]</b>\n\n` +
+            `👤 نام کاربر: ${escapeHTML(userData.firstName)}\n` +
+            `🆔 آیدی عددی: <code>${chatId}</code>\n` +
+            `🏷️ کد پیگیری: <code>${trackingCode}</code>\n` +
+            `💫 تعداد استارز: ${userData.starCount}\n` +
+            `📥 دریافت‌کننده: @${escapeHTML(userData.starRecipient)}\n` +
+            `💰 مبلغ کل: ${userData.lastAmount.toLocaleString()} تومان\n` +
+            `⏰ زمان ثبت: ${now}`;
+
         const adminOrderMarkup = {
             reply_markup: {
                 inline_keyboard: [
@@ -1351,7 +1447,16 @@ bot.on('message', async (msg) => {
         const userConfirmMsg = `سفارش ثبت شد.\n\nکد پیگیری: <code>${trackingCode}</code>\nمدت: ${userData.boostMonths} ماه\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
         await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
 
-        const adminOrderMsg = `<b>[ سفارش جدید بوست ]</b>\n\nکاربر: ${escapeHTML(userData.firstName)} (${chatId})\nکد: <code>${trackingCode}</code>`;
+        const adminOrderMsg = 
+            `<b>[ سفارش جدید بوست ]</b>\n\n` +
+            `👤 نام کاربر: ${escapeHTML(userData.firstName)}\n` +
+            `🆔 آیدی عددی: <code>${chatId}</code>\n` +
+            `🏷️ کد پیگیری: <code>${trackingCode}</code>\n` +
+            `⏳ مدت زمان: ${userData.boostMonths} ماه\n` +
+            `🔗 لینک کانال: <code>${escapeHTML(userData.boostLink)}</code>\n` +
+            `💰 مبلغ کل: ${userData.lastAmount.toLocaleString()} تومان\n` +
+            `⏰ زمان ثبت: ${now}`;
+
         const adminOrderMarkup = {
             reply_markup: {
                 inline_keyboard: [
@@ -1394,7 +1499,19 @@ bot.on('message', async (msg) => {
         const userConfirmMsg = `سفارش گیفت ثبت شد.\n\nکد پیگیری: <code>${trackingCode}</code>\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
         await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
 
-        const adminOrderMsg = `<b>[ سفارش جدید گیفت ]</b>\n\nکد: <code>${trackingCode}</code>`;
+        const adminOrderMsg = 
+            `<b>[ سفارش جدید گیفت استارزی ]</b>\n\n` +
+            `👤 نام کاربر: ${escapeHTML(userData.firstName)}\n` +
+            `🆔 آیدی عددی: <code>${chatId}</code>\n` +
+            `🏷️ کد پیگیری: <code>${trackingCode}</code>\n` +
+            `🎁 نام گیفت: ${escapeHTML(userData.selectedGiftName)} (${userData.selectedGiftStars} استارز)\n` +
+            `🔢 تعداد: ${userData.giftCount}\n` +
+            `📥 دریافت‌کننده: @${escapeHTML(userData.recipientUsername)}\n` +
+            `🔒 هاید: ${userData.isHided ? 'بله' : 'خیر'}\n` +
+            `💬 کامنت: ${escapeHTML(userData.commentText)}\n` +
+            `💰 مبلغ کل: ${userData.lastAmount.toLocaleString()} تومان\n` +
+            `⏰ زمان ثبت: ${now}`;
+
         const adminOrderMarkup = {
             reply_markup: {
                 inline_keyboard: [
@@ -1430,7 +1547,62 @@ bot.on('message', async (msg) => {
         const userConfirmMsg = `سفارش تون ثبت شد.\n\nکد پیگیری: <code>${trackingCode}</code>`;
         await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
 
-        const adminOrderMsg = `<b>[ سفارش جدید تون ]</b>\n\nکد: <code>${trackingCode}</code>`;
+        const adminOrderMsg = 
+            `<b>[ سفارش جدید ارز تون ]</b>\n\n` +
+            `👤 نام کاربر: ${escapeHTML(userData.firstName)}\n` +
+            `🆔 آیدی عددی: <code>${chatId}</code>\n` +
+            `🏷️ کد پیگیری: <code>${trackingCode}</code>\n` +
+            `💠 مقدار تون: ${userData.tonAmount}\n` +
+            `📫 آدرس ولت: <code>${escapeHTML(userData.tonWalletAddress)}</code>\n` +
+            `💬 ممو / کامنت: ${escapeHTML(userData.tonMemo)}\n` +
+            `💰 مبلغ کل: ${userData.lastAmount.toLocaleString()} تومان\n` +
+            `⏰ زمان ثبت: ${now}`;
+
+        const adminOrderMarkup = {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '✅ انجام شد', callback_data: `order_done_${trackingCode}` }, { text: '❌ رد شد', callback_data: `order_reject_${trackingCode}` }]
+                ]
+            }
+        };
+
+        await safeSendMessage(ADMIN_NUMERIC_ID, adminOrderMsg, adminOrderMarkup);
+        userData.currentShopState = null;
+        saveDatabase();
+        return;
+    }
+
+    if (text === '✅ تایید ترون' && userData.currentShopState === 'trx_invoice') {
+        const trackingCode = 'TRX-' + Math.floor(10000 + Math.random() * 90000);
+        const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
+
+        db.orders[trackingCode] = {
+            userId: chatId,
+            firstName: userData.firstName,
+            giftName: `ارز ترون (${userData.trxAmount} TRX)`,
+            count: userData.trxAmount,
+            recipient: userData.trxWalletAddress,
+            isHided: false,
+            comment: 'ندارد',
+            amount: userData.lastAmount,
+            time: now,
+            status: 'pending'
+        };
+        saveDatabase();
+
+        const userConfirmMsg = `سفارش ترون ثبت شد.\n\nکد پیگیری: <code>${trackingCode}</code>`;
+        await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
+
+        const adminOrderMsg = 
+            `<b>[ سفارش جدید ارز ترون (TRX) ]</b>\n\n` +
+            `👤 نام کاربر: ${escapeHTML(userData.firstName)}\n` +
+            `🆔 آیدی عددی: <code>${chatId}</code>\n` +
+            `🏷️ کد پیگیری: <code>${trackingCode}</code>\n` +
+            `💠 مقدار ترون: ${userData.trxAmount}\n` +
+            `📫 آدرس ولت: <code>${escapeHTML(userData.trxWalletAddress)}</code>\n` +
+            `💰 مبلغ کل: ${userData.lastAmount.toLocaleString()} تومان\n` +
+            `⏰ زمان ثبت: ${now}`;
+
         const adminOrderMarkup = {
             reply_markup: {
                 inline_keyboard: [
@@ -1466,7 +1638,16 @@ bot.on('message', async (msg) => {
         const userConfirmMsg = `سفارش ری‌اکشن ثبت شد.\n\nکد: <code>${trackingCode}</code>`;
         await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
 
-        const adminOrderMsg = `<b>[ سفارش جدید ری‌اکشن ]</b>\n\nکد: <code>${trackingCode}</code>`;
+        const adminOrderMsg = 
+            `<b>[ سفارش جدید ری‌اکشن ]</b>\n\n` +
+            `👤 نام کاربر: ${escapeHTML(userData.firstName)}\n` +
+            `🆔 آیدی عددی: <code>${chatId}</code>\n` +
+            `🏷️ کد پیگیری: <code>${trackingCode}</code>\n` +
+            `💫 تعداد استارز ری‌اکشن: ${userData.reactionCount}\n` +
+            `🔗 لینک پست: <code>${escapeHTML(userData.reactionLink)}</code>\n` +
+            `💰 مبلغ کل: ${userData.lastAmount.toLocaleString()} تومان\n` +
+            `⏰ زمان ثبت: ${now}`;
+
         const adminOrderMarkup = {
             reply_markup: {
                 inline_keyboard: [
@@ -1649,6 +1830,26 @@ bot.on('message', async (msg) => {
         };
         await safeSendMessage(chatId, `تعداد تون مورد نظر را وارد کنید:`, tonWalletFlowKeyboard);
         userData.waitingForTonAmount = true;
+        saveDatabase();
+    }
+    else if (text === '💠 خرید ارز ترون ( TRX )') {
+        userData.currentShopState = 'trx_wallet_flow';
+        saveDatabase();
+        const trxData = await fetchTrxData();
+        userData.trxPricePerUnit = trxData.finalPrice;
+        saveDatabase();
+
+        const trxWalletFlowKeyboard = {
+            reply_markup: {
+                keyboard: [
+                    [{ text: 'محاسبه با موجودی من 🔄' }],
+                    [{ text: 'برگشت ↩️' }]
+                ],
+                resize_keyboard: true
+            }
+        };
+        await safeSendMessage(chatId, `تعداد ترون (TRX) مورد نظر را وارد کنید:`, trxWalletFlowKeyboard);
+        userData.waitingForTrxAmount = true;
         saveDatabase();
     }
     else if (text === '🎁 گیفت استارزی' || text === '🎁 گیفت‌های استارزی') {
