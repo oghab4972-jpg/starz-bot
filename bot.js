@@ -1619,7 +1619,8 @@ bot.on('callback_query', async (callbackQuery) => {
         return;
     }
 
-    .startsWith('reply_')) {
+        if (action.startsWith('reply_')) {
+
         const targetUserId = action.split('_')[1];
         const adminData = getUserDataById(ADMIN_NUMERIC_ID);
         adminData.adminReplyingTo = targetUserId;
