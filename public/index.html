@@ -3,25 +3,218 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>استارزپلاس مینی‌اپ</title>
+    <title>StarzPlus Store</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link rel="stylesheet" href="style.css">
+    <style>
+        :root {
+            --bg-color: var(--tg-theme-bg-color, #0f172a);
+            --text-color: var(--tg-theme-text-color, #ffffff);
+            --card-bg: rgba(255, 255, 255, 0.06);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --accent-color: #38bdf8;
+        }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: Tahoma, sans-serif;
+            margin: 0;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+        .container { max-width: 480px; margin: auto; }
+        header { text-align: center; margin-bottom: 25px; padding-top: 10px; }
+        header h2 { color: var(--accent-color); margin-bottom: 5px; font-size: 22px; }
+        header p { color: #94a3b8; font-size: 13px; margin: 0; }
+        
+        .section-title { font-size: 15px; color: #94a3b8; margin: 20px 0 10px 5px; font-weight: bold; }
+        
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .card:active { transform: scale(0.97); background: rgba(255, 255, 255, 0.12); }
+        .card-info h3 { margin: 0 0 4px 0; font-size: 16px; color: #f1f5f9; }
+        .card-info p { margin: 0; font-size: 12px; color: #94a3b8; }
+        .icon { font-size: 30px; background: rgba(56, 189, 248, 0.1); padding: 10px; border-radius: 12px; }
+
+        /* Modal / Form styling */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .modal-content {
+            background: #1e293b;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .modal-content h3 { margin-top: 0; color: var(--accent-color); text-align: center; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 13px; margin-bottom: 5px; color: #cbd5e1; }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            background: #0f172a;
+            color: #fff;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        .btn-primary {
+            width: 100%;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .btn-close {
+            background: transparent;
+            color: #94a3b8;
+            border: none;
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h2>⭐ StarzPlus Mini App</h2>
-            <p>خرید امن و آنی استارز، تون و گیفت</p>
+            <h2>⭐ StarzPlus Store</h2>
+            <p>مرجع تخصصی خرید استارز، تون و گیفت تلگرام</p>
         </header>
-        <div class="card" onclick="alert('مینی‌اپ با موفقیت متصل شد!')">
-            <h3>💎 خرید استارز تلگرام</h3>
-            <p>تحویل آنی کمتر از ۲ دقیقه</p>
+
+        <div class="section-title">سرویس‌های پرمخاطب</div>
+
+        <div class="card" onclick="openModal('starsModal')">
+            <div class="card-info">
+                <h3>خرید استارز تلگرام (Telegram Stars)</h3>
+                <p>تحویل آنی کمتر از ۲ دقیقه با بهترین نرخ</p>
+            </div>
+            <div class="icon">⭐</div>
+        </div>
+
+        <div class="card" onclick="openModal('tonModal')">
+            <div class="card-info">
+                <h3>خرید ارز دیجیتال تون (TON)</h3>
+                <p>نرخ لحظه‌ای بازار با تسویه خودکار</p>
+            </div>
+            <div class="icon">💠</div>
+        </div>
+
+        <div class="card" onclick="openModal('giftModal')">
+            <div class="card-info">
+                <h3>گیفت‌های استارزی تلگرام</h3>
+                <p>انواع گیفت‌های قلب، تدی، کادو و رز</p>
+            </div>
+            <div class="icon">🎁</div>
         </div>
     </div>
+
+    <!-- مودال خرید استارز -->
+    <div id="starsModal" class="modal">
+        <div class="modal-content">
+            <h3>خرید استارز تلگرام</h3>
+            <div class="form-group">
+                <label>تعداد استارز (حداقل ۵۰):</label>
+                <input type="number" id="starCount" value="50" min="50">
+            </div>
+            <div class="form-group">
+                <label>آیدی دریافت‌کننده (بدون @):</label>
+                <input type="text" id="starRecipient" placeholder="username">
+            </div>
+            <button class="btn-primary" onclick="submitOrder('stars')">ثبت و ادامه فاکتور</button>
+            <button class="btn-close" onclick="closeModal('starsModal')">انصراف</button>
+        </div>
+    </div>
+
+    <!-- مودال خرید تون -->
+    <div id="tonModal" class="modal">
+        <div class="modal-content">
+            <h3>خرید ارز تون (TON)</h3>
+            <div class="form-group">
+                <label>مقدار تون:</label>
+                <input type="number" id="tonAmount" value="1" step="0.1" min="0.1">
+            </div>
+            <div class="form-group">
+                <label>آدرس ولت تون:</label>
+                <input type="text" id="tonWallet" placeholder="UQ...");">
+            </div>
+            <button class="btn-primary" onclick="submitOrder('ton')">ثبت سفارش تون</button>
+            <button class="btn-close" onclick="closeModal('tonModal')">انصراف</button>
+        </div>
+    </div>
+
+    <!-- مودال گیفت -->
+    <div id="giftModal" class="modal">
+        <div class="modal-content">
+            <h3>خرید گیفت استارزی</h3>
+            <div class="form-group">
+                <label>نوع گیفت را از ربات انتخاب کنید</label>
+                <p style="font-size: 13px; color: #94a3b8;">جهت انتخاب دقیق مدل و تعداد گیفت، از منوی ربات تلگرام استفاده کنید.</p>
+            </div>
+            <button class="btn-primary" onclick="closeModal('giftModal')">متوجه شدم</button>
+        </div>
+    </div>
+
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
+
+        function openModal(modalId) {
+            document.getElementById(modalId).style.display = 'flex';
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        function submitOrder(type) {
+            if (type === 'stars') {
+                const count = document.getElementById('starCount').value;
+                const recipient = document.getElementById('starRecipient').value;
+                if(!recipient) {
+                    alert('لطفاً آیدی دریافت‌کننده را وارد کنید.');
+                    return;
+                }
+                tg.sendData(JSON.stringify({ action: 'buy_stars', count: count, recipient: recipient }));
+            } else if (type === 'ton') {
+                const amount = document.getElementById('tonAmount').value;
+                const wallet = document.getElementById('tonWallet').value;
+                if(!wallet) {
+                    alert('لطفاً آدرس ولت را وارد کنید.');
+                    return;
+                }
+                tg.sendData(JSON.stringify({ action: 'buy_ton', amount: amount, wallet: wallet }));
+            }
+            tg.close();
+        }
     </script>
 </body>
 </html>
-
