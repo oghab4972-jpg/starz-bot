@@ -6,7 +6,7 @@ const http = require('http');
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('StarzPlus Bot is running live!\n');
+    res.end('StarzPlus Bot is running live with Live API Prices!\n');
 }).listen(PORT, () => {
     console.log(`Web server is running on port ${PORT}`);
 });
@@ -34,7 +34,6 @@ process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled
 
 let db = { users: {}, orders: {}, discountCodes: {} };
 
-// مقادیر ثابت دلاری بر اساس کد قبلی شما
 const TON_USD = 5.5;
 const STAR_USD = 0.015;
 
@@ -60,7 +59,7 @@ function saveDatabase() {
 }
 
 loadDatabase();
-console.log('StarzPlus Bot is running!');
+console.log('StarzPlus Bot is running with Wallex API Price Engine!');
 
 function getUserDataById(userId) {
     if (!db.users[userId]) {
@@ -158,7 +157,7 @@ async function getUsdtToToman() {
                     if (parsed && parsed.result && parsed.result.symbols && parsed.result.symbols.USDTTMN) {
                         resolve(parseFloat(parsed.result.symbols.USDTTMN.stats.lastPrice));
                     } else {
-                        resolve(65000); // قیمت پیش فرض در صورت خطا
+                        resolve(65000);
                     }
                 } catch (e) {
                     resolve(65000);
@@ -183,6 +182,27 @@ async function fetchStarsPrice() {
     return Math.round(starToman);
 }
 
+// ساخت کیبورد با استایل رنگی جدید تلگرام
+function getMainKeyboard(isAdmin) {
+    let rows = [
+        [{ text: '🛒 خرید محصول', style: 'success' }], // سبز
+        [{ text: '➕ افزایش موجودی', style: 'primary' }, { text: '💳 حساب کاربری', style: 'primary' }], // آبی
+        [{ text: '👥 زیرمجموعه‌گیری', style: 'danger' }], // قرمز
+        [{ text: '📞 پشتیبانی', style: 'primary' }, { text: '📦 پیگیری سفارش', style: 'primary' }], // آبی
+        [{ text: '❤️ چطور میتوانم به شما اعتماد کنم', style: 'danger' }] // قرمز
+    ];
+    if (isAdmin) {
+        rows.push([{ text: '🔧 پنل مدیریت', style: 'primary' }]);
+    }
+    return {
+        reply_markup: {
+            keyboard: rows,
+            resize_keyboard: true,
+            is_persistent: true
+        }
+    };
+}
+
 async function showGiftInvoice(chatId, userData) {
     const unitPrice = userData.selectedGiftStars * 3900; 
     const totalPrice = unitPrice * userData.giftCount;
@@ -202,7 +222,6 @@ async function showGiftInvoice(chatId, userData) {
         `مقدار خرید: ${userData.selectedGiftName}\n` +
         `یوزر دریافت‌کننده: @${userData.recipientUsername} 🔗\n\n` +
         `گیفت هاید: ${userData.isHided ? '✔️ بله' : '❌ خیر'} 💬\n` +
-        `تنظیم معرفی فرستنده: ❌ غیرفعال ⚙️\n` +
         `کامنت: ${userData.commentText}\n\n` +
         `مبلغ فاکتور: ${priceDisplay} 💰\n` +
         `مبلغ نهایی: ${currentAmount.toLocaleString()} تومان 💳\n\n` +
@@ -297,16 +316,7 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    let mainKeyboardRows = [
-        [{ text: '🛒 خرید محصول' }],
-        [{ text: '➕ افزایش موجودی' }, { text: '💳 حساب کاربری' }],
-        [{ text: '📞 پشتیبانی' }, { text: '📦 پیگیری سفارش' }],
-        [{ text: '❤️ چه طور میتوانم به شما اعتماد کنم' }]
-    ];
-
-    if (isAdmin) mainKeyboardRows.push([{ text: '🔧 پنل مدیریت' }]);
-
-    const mainKeyboard = { reply_markup: { keyboard: mainKeyboardRows, resize_keyboard: true, is_persistent: true } };
+    const mainKeyboard = getMainKeyboard(isAdmin);
     const backKeyboard = { reply_markup: { keyboard: [[{ text: '🔙 بازگشت' }]], resize_keyboard: true } };
     const accountKeyboard = { reply_markup: { keyboard: [[{ text: '📦 سفارش های معلق من' }, { text: '📦 سفارش های اخیر من' }], [{ text: '🔙 بازگشت' }]], resize_keyboard: true } };
 
@@ -1226,9 +1236,13 @@ bot.on('message', async (msg) => {
             await showGiftInvoice(chatId, userData);
         }
     }
-    else if (text === '❤️ چه طور میتوانم به شما اعتماد کنم') {
+    else if (text === '❤️ چطور میتوانم به شما اعتماد کنم' || text === '❤️ چه طور میتوانم به شما اعتماد کنم') {
         const trustMsg = `استارزپلاس با دارا بودن رضایت هزاران مشتری فعال در خدمت شماست.\n\nکانال رضایت مشتریان:\n@snt_shopp`;
         await safeSendMessage(chatId, trustMsg, backKeyboard);
+    }
+    else if (text === '👥 زیرمجموعه‌گیری') {
+        const refMsg = `👥 بخش زیرمجموعه‌گیری و کسب درآمد\n\nبا ارسال لینک اختصاصی خود به دوستانتان، به ازای خرید آن‌ها هدیه دریافت کنید.\n\n🔗 لینک دعوت شما:\n\`https://t.me/starzplusbot?start=${chatId}\``;
+        await safeSendMessage(chatId, refMsg, backKeyboard);
     }
     else if (text === '📦 پیگیری سفارش') {
         userData.waitingForTrackingInput = true;
