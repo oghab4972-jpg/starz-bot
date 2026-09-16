@@ -70,8 +70,8 @@ function getUserDataById(userId) {
             cardVerified: false,
             isBanned: false,
             level: 'سطح 1',
-            wallet: 6411,
-            discountWallet: 1766,
+            wallet: 0,
+            discountWallet: 0,
             waitingForAmount: false,
             waitingForTicket: false,
             waitingForReceipt: false, 
@@ -87,9 +87,10 @@ function getUserDataById(userId) {
             waitingForReactionLink: false,
             waitingForStarCount: false,
             waitingForStarRecipient: false,
+            waitingForCustomStarInput: false,
             starCount: 50,
             starRecipient: '',
-            starPricePerUnit: 3850,
+            starPricePerUnit: 3798,
             reactionCount: 5,
             reactionLink: '',
             lastAmount: 0,
@@ -202,7 +203,7 @@ function getShopKeyboard() {
         reply_markup: {
             keyboard: [
                 [{ text: '📦 سفارش های اخیر من', style: 'primary' }],
-                [{ text: '🌟 استارز', style: 'success' }],
+                [{ text: '⭐ استارز تلگرام (Telegram Stars)', style: 'success' }],
                 [{ text: '💠 خرید ارز تون ( GRAM )', style: 'success' }],
                 [{ text: '🎁 گیفت‌های استارزی', style: 'success' }, { text: '💫 ری اکشن استارزی', style: 'success' }],
                 [{ text: '🔙 بازگشت', style: 'danger' }]
@@ -236,10 +237,9 @@ function getAccountKeyboard() {
 }
 
 async function showStarInvoice(chatId, userData) {
-    const unitPrice = userData.starPricePerUnit || 3850; 
+    const unitPrice = userData.starPricePerUnit || 3798; 
     const totalPrice = unitPrice * userData.starCount;
     let currentAmount = totalPrice;
-    let discountWalletVal = userData.discountWallet || 1766;
 
     if (userData.appliedDiscountPercent > 0) {
         const discountVal = Math.round(totalPrice * (userData.appliedDiscountPercent / 100));
@@ -248,22 +248,26 @@ async function showStarInvoice(chatId, userData) {
     userData.lastAmount = currentAmount;
     saveDatabase();
 
-    const invoiceMsg = 
-        `فاکتور خرید استارز\n\n` +
-        `مقدار خرید: ${userData.starCount}\n` +
-        `یوزر دریافت‌کننده: @${userData.starRecipient}\n\n` +
-        `مبلغ فاکتور: ${totalPrice.toLocaleString()} تومان\n` +
-        `کل موجودی تخفیف: ${discountWalletVal.toLocaleString()} تومان\n\n` +
-        `حداکثر تخفیف قابل اعمال: ${discountWalletVal.toLocaleString()} تومان\n\n` +
-        `مبلغ نهایی: ${currentAmount.toLocaleString()} تومان\n\n` +
-        `در صورتی که جزئیات بالا مورد تأیید شماست ، روی دکمه «تأیید» کلیک کنید.`;
+    const hasEnoughWallet = userData.wallet >= currentAmount;
 
+    const invoiceMsg = 
+        `📦 پیش‌فاکتور نهایی خرید\n\n` +
+        `⭐ محصول انتخابی: ⭐ ${userData.starCount} استارز تلگرام\n` +
+        `👤 اکانت گیرنده: @${userData.starRecipient}\n` +
+        `📍 قیمت اصلی: ${totalPrice.toLocaleString()} تومان\n\n` +
+        `💰 مبلغ نهایی قابل پرداخت: ${currentAmount.toLocaleString()} تومان\n` +
+        `💳 موجودی کیف پول شما: ${userData.wallet.toLocaleString()} تومان\n\n` +
+        `⏳ این فاکتور تنها 15 دقیقه اعتبار دارد.`;
+
+    let actionButtonText = hasEnoughWallet ? '💳 پرداخت از کیف پول (تایید)' : '❌ موجودی کیف پول کافی نیست';
+    
     const invoiceKeyboard = {
         reply_markup: {
             keyboard: [
-                [{ text: '✅ تایید', style: 'success' }, { text: '❌ لغو خرید', style: 'danger' }],
-                [{ text: '🎁 اعمال تخفیف', style: 'primary' }, { text: '💳 اعمال کد تخفیف', style: 'primary' }],
-                [{ text: '🔙 بازگشت', style: 'danger' }]
+                [{ text: actionButtonText, style: hasEnoughWallet ? 'success' : 'danger' }],
+                ...(!hasEnoughWallet ? [[{ text: '➕ افزایش موجودی', style: 'primary' }]] : []),
+                [{ text: '🏷️ اعمال کد تخفیف', style: 'primary' }],
+                [{ text: '🔙 بازگشت به پکیج‌ها', style: 'danger' }, { text: '🏠 منوی اصلی', style: 'danger' }]
             ],
             resize_keyboard: true
         }
@@ -277,7 +281,6 @@ async function showGiftInvoice(chatId, userData) {
     const totalPrice = unitPrice * userData.giftCount;
     let currentAmount = totalPrice;
 
-    let priceDisplay = `${totalPrice.toLocaleString()} تومان`;
     if (userData.appliedDiscountPercent > 0) {
         const discountVal = Math.round(totalPrice * (userData.appliedDiscountPercent / 100));
         currentAmount = totalPrice - discountVal;
@@ -291,7 +294,6 @@ async function showGiftInvoice(chatId, userData) {
         `یوزر دریافت‌کننده: @${userData.recipientUsername}\n\n` +
         `گیفت هاید: ${userData.isHided ? 'بله' : 'خیر'}\n` +
         `کامنت: ${userData.commentText}\n\n` +
-        `مبلغ فاکتور: ${priceDisplay}\n` +
         `مبلغ نهایی: ${currentAmount.toLocaleString()} تومان\n\n` +
         `در صورتی که جزئیات بالا مورد تأیید شماست ، روی دکمه «تأیید» کلیک کنید.`;
 
@@ -388,7 +390,7 @@ bot.on('message', async (msg) => {
     const backKeyboard = getBackKeyboard();
     const accountKeyboard = getAccountKeyboard();
 
-    if (text === '🔙 بازگشت' || text === '🔙 بازگشت به منوی اصلی' || text === 'انصراف' || text === '↶ برگشت') {
+    if (text === '🔙 بازگشت' || text === '🏠 منوی اصلی' || text === 'انصراف' || text === '↶ برگشت') {
         userData.waitingForAmount = false;
         userData.waitingForTicket = false;
         userData.waitingForReceipt = false;
@@ -404,6 +406,7 @@ bot.on('message', async (msg) => {
         userData.waitingForReactionLink = false;
         userData.waitingForStarCount = false;
         userData.waitingForStarRecipient = false;
+        userData.waitingForCustomStarInput = false;
         
         if (isAdmin) { 
             adminData.adminAction = null; 
@@ -414,37 +417,38 @@ bot.on('message', async (msg) => {
             adminData.waitingForReceiptRejectReason = false;
         }
 
-        if (text === '🔙 بازگشت به منوی اصلی' || !userData.currentShopState || userData.currentShopState === 'main_shop') {
+        if (text === '🏠 منوی اصلی' || !userData.currentShopState || userData.currentShopState === 'main_shop') {
             userData.currentShopState = null;
             saveDatabase();
             await safeSendMessage(chatId, 'به منوی اصلی برگشتید.', mainKeyboard);
             return;
         }
 
-        if (userData.currentShopState === 'star_recipient' || userData.currentShopState === 'star_invoice') {
+        if (text === '🔙 بازگشت به پکیج‌ها' || userData.currentShopState === 'star_recipient' || userData.currentShopState === 'star_invoice' || userData.currentShopState === 'star_custom_input') {
             userData.currentShopState = 'star_menu';
-            userData.waitingForStarCount = true;
+            userData.waitingForStarCount = false;
             saveDatabase();
             const starPrice = await fetchStarsPrice();
             userData.starPricePerUnit = starPrice;
             saveDatabase();
 
             const starMsg = 
-                `وقتشه درخشیدن با استارز تلگرامه !\n\n` +
-                `کاربردهای استارز :\n` +
-                `فعال‌سازی ری‌اکشن‌های استارز در چت‌ها\n` +
-                `خرید یا تمدید اکانت پرمیوم تلگرام\n` +
-                `پرداخت هزینه تبلیغات تلگرام و تبلیغ کانال یا ربات خود\n` +
-                `استفاده در خریدهای درون‌برنامه‌ای و مینی‌اپ‌ها\n\n` +
-                `سفارش‌های استارز در کمتر از ۲ دقیقه انجام میشن ، با پشتیبانی کامل و لحظه‌ای!\n\n` +
-                `حداقل خرید : 50 استارز\n` +
-                `لطفاً تعداد استارز مورد نظر خود را ارسال کنید:`;
+                `⭐ استارز تلگرام (Telegram Stars)\n\n` +
+                `✨ با استارز، دنیای جدیدی از تعامل و امکانات در تلگرام را تجربه کنید!\n\n` +
+                `⭐ کاربردهای استارز تلگرام:\n` +
+                `• خرید آیتم‌ها و امکانات مختلف در مینی‌اپ‌ها\n` +
+                `• امکان ری‌اکشن‌های استارزی روی پست‌ها\n` +
+                `• خرید مستقیم گیفت‌ها و اشتراک پرمیوم تلگرام برای خود یا دوستانتان\n\n` +
+                `⚡ سفارشات شما به صورت خودکار و در کمتر از 1 دقیقه انجام می‌شود.\n\n` +
+                `👇 لطفاً مقدار استارز مورد نظر را انتخاب کنید`;
             
             const starMenuKeyboard = {
                 reply_markup: {
                     keyboard: [
-                        [{ text: 'محاسبه با موجودی من', style: 'success' }],
-                        [{ text: '🔙 بازگشت', style: 'danger' }]
+                        [{ text: '⭐ 50', style: 'success' }, { text: '⭐ 100', style: 'success' }],
+                        [{ text: '⭐ 200', style: 'success' }, { text: '⭐ 500', style: 'success' }],
+                        [{ text: '✏️ مقدار دلخواه', style: 'primary' }],
+                        [{ text: '🔙 بازگشت به منوی اصلی', style: 'danger' }]
                     ],
                     resize_keyboard: true
                 }
@@ -459,11 +463,7 @@ bot.on('message', async (msg) => {
             userData.starPricePerUnit = starPrice;
             saveDatabase();
 
-            const reactMsg = 
-                `وقتشه پسته‌هات با ری‌اکشن استارزی بدرخشن! ✨\n\n` +
-                `• حداقل خرید : 5 استارز 📊\n` +
-                `• قیمت هر استار: ${starPrice.toLocaleString()} تومان 💵\n\n` +
-                `• لطفاً تعداد ری‌اکشن استارزی موردنظر خود را ارسال کنید 👇`;
+            const reactMsg = `• لطفاً تعداد ری‌اکشن استارزی موردنظر خود را ارسال کنید 👇`;
             const reactKeyboard = {
                 reply_markup: {
                     keyboard: [
@@ -479,62 +479,6 @@ bot.on('message', async (msg) => {
             userData.currentShopState = 'main_shop';
             saveDatabase();
             await safeSendMessage(chatId, 'سرویس مورد نظر خود را انتخاب کنید :', getShopKeyboard());
-            return;
-        } else if (userData.currentShopState === 'gift_list') {
-            userData.currentShopState = 'gift_category';
-            saveDatabase();
-            const giftCategoryKeyboard = { reply_markup: { keyboard: [[{ text: '🧸 گیفت های عادی', style: 'success' }], [{ text: '🔙 بازگشت', style: 'danger' }]], resize_keyboard: true } };
-            await safeSendMessage(chatId, 'لطفاً دسته‌بندی گیفت مورد نظر خود را انتخاب کنید :', giftCategoryKeyboard);
-            return;
-        } else if (userData.currentShopState === 'gift_count') {
-            userData.currentShopState = 'gift_list';
-            saveDatabase();
-            const giftListKeyboard = {
-                reply_markup: {
-                    keyboard: [
-                        [{ text: '💖 گیفت قلب (15)', style: 'success' }, { text: '🧸 گیفت تدی (15)', style: 'success' }],
-                        [{ text: '🎁 گیفت کادو (25)', style: 'success' }, { text: '🌹 گیفت گل رز (25)', style: 'success' }],
-                        [{ text: '🎂 گیفت کیک (50)', style: 'success' }, { text: '🌷 گیفت گل (50)', style: 'success' }],
-                        [{ text: '🍾 گیفت بطری (50)', style: 'success' }, { text: '🚀 گیفت سفینه (50)', style: 'success' }],
-                        [{ text: '🏆 گیفت جام (100)', style: 'success' }, { text: '💍 گیفت حلقه (100)', style: 'success' }],
-                        [{ text: '🔙 بازگشت', style: 'danger' }]
-                    ],
-                    resize_keyboard: true
-                }
-            };
-            await safeSendMessage(chatId, 'لطفاً گیفت مورد نظر خود را انتخاب کنید', giftListKeyboard);
-            return;
-        } else if (userData.currentShopState === 'gift_recipient') {
-            userData.currentShopState = 'gift_count';
-            saveDatabase();
-            const countKeyboard = {
-                reply_markup: {
-                    keyboard: [
-                        [{ text: '🔻 کم کردن', style: 'danger' }, { text: '📊 تعداد', style: 'primary' }, { text: '🟢 اضافه کردن', style: 'success' }],
-                        [{ text: '➖', style: 'danger' }, { text: `${userData.giftCount}`, style: 'primary' }, { text: '➕', style: 'success' }],
-                        [{ text: '🔙 بازگشت', style: 'danger' }, { text: '✅ ادامه', style: 'success' }]
-                    ],
-                    resize_keyboard: true
-                }
-            };
-            await safeSendMessage(chatId, `تعداد انتخاب شده: ${userData.giftCount}`, countKeyboard);
-            return;
-        } else if (userData.currentShopState === 'gift_invoice') {
-            userData.currentShopState = 'gift_recipient';
-            saveDatabase();
-            const selfName = msg.from.first_name || 'کاربر';
-            const recipientKeyboard = {
-                reply_markup: {
-                    keyboard: [
-                        [{ text: `برای خودم ( ${selfName} )`, style: 'success' }],
-                        [{ text: '🔙 بازگشت', style: 'danger' }]
-                    ],
-                    resize_keyboard: true
-                }
-            };
-            
-            const recipientMsg = `انتخاب اکانت دریافت‌کننده\n\nاگر قصد خرید برای اکانت خودتان را دارید، روی دکمه «برای خودم» کلیک کنید.\n\nاگر قصد خرید برای شخص دیگری را دارید، یوزرنیم ( آیدی ) تلگرام او را بدون علامت @ ارسال کنید.\n\n✅ Pedarfarsi\n❌ @Pedarfarsi`;
-            await safeSendMessage(chatId, recipientMsg, recipientKeyboard);
             return;
         } else {
             userData.currentShopState = null;
@@ -754,55 +698,38 @@ bot.on('message', async (msg) => {
         }
     }
 
-    if (userData.waitingForStarCount && text) {
-        if (text === 'محاسبه با موجودی من') {
-            const balanceStars = Math.floor(userData.wallet / userData.starPricePerUnit);
-            const checkMsg = `موجودی اصلی شما: ${userData.wallet.toLocaleString()} تومان\nمعادل حدود ${balanceStars} استارز می‌توانید خریداری کنید.\nلطفاً تعداد استارز مورد نظر را وارد کنید:`;
-            await safeSendMessage(chatId, checkMsg, backKeyboard);
+    if (userData.waitingForCustomStarInput && text) {
+        userData.waitingForCustomStarInput = false;
+        const countInput = parseInt(text);
+        if (isNaN(countInput) || countInput < 50) {
+            await safeSendMessage(chatId, '❌ حداقل مقدار استارز ۵۰ عدد است. لطفاً عدد معتبر وارد کنید:', {
+                reply_markup: {
+                    keyboard: [[{ text: '🔙 بازگشت به پکیج‌ها', style: 'danger' }], [{ text: '🏠 منوی اصلی', style: 'danger' }]],
+                    resize_keyboard: true
+                }
+            });
+            userData.waitingForCustomStarInput = true;
+            saveDatabase();
             return;
         }
 
-        const countInput = parseInt(text);
-        if (isNaN(countInput) || countInput < 50) {
-            await safeSendMessage(chatId, '❌ حداقل خرید ۵۰ استارز است:', backKeyboard);
-            return;
-        }
         userData.starCount = countInput;
-        userData.waitingForStarCount = false;
         userData.waitingForStarRecipient = true;
         userData.currentShopState = 'star_recipient';
         saveDatabase();
 
         const selfName = msg.from.first_name || 'کاربر';
-        const selfUsername = msg.from.username || selfName;
-        userData.starRecipient = selfUsername;
-        saveDatabase();
-
         const recipientKeyboard = {
             reply_markup: {
                 keyboard: [
-                    [{ text: `برای خودم ( ${selfName} )`, style: 'success' }],
-                    [{ text: '🔙 بازگشت', style: 'danger' }]
+                    [{ text: `✅ برای خودم ( ${selfName} )`, style: 'success' }],
+                    [{ text: '🔙 بازگشت به پکیج‌ها', style: 'danger' }, { text: '🏠 منوی اصلی', style: 'danger' }]
                 ],
                 resize_keyboard: true
             }
         };
-        const recipientMsg = `انتخاب اکانت دریافت‌کننده\n\nاگر قصد خرید برای اکانت خودتان را دارید، روی دکمه «برای خودم» کلیک کنید.\n\nاگر قصد خرید برای شخص دیگری را دارید، یوزرنیم ( آیدی ) تلگرام او را بدون علامت @ ارسال کنید.\n\n✅ Pedarfarsi\n❌ @Pedarfarsi`;
+        const recipientMsg = `⭐ مقدار انتخاب شده: ${userData.starCount} استارز\n💰 قیمت: ${(userData.starCount * userData.starPricePerUnit).toLocaleString()} تومان\n\n👤 یوزرنیم گیرنده استارز را ارسال کنید:\nمثال: username@`;
         await safeSendMessage(chatId, recipientMsg, recipientKeyboard);
-        return;
-    }
-
-    if (userData.waitingForStarRecipient && text) {
-        userData.waitingForStarRecipient = false;
-        let usernameInput = text.trim();
-        if (usernameInput.startsWith('برای خودم')) {
-            usernameInput = msg.from.username || msg.from.first_name;
-        }
-        if (usernameInput.startsWith('@')) usernameInput = usernameInput.substring(1);
-        userData.starRecipient = usernameInput;
-        userData.currentShopState = 'star_invoice';
-        saveDatabase();
-        await showStarInvoice(chatId, userData);
         return;
     }
 
@@ -830,13 +757,6 @@ bot.on('message', async (msg) => {
     }
 
     if (userData.waitingForReactionCount && text) {
-        if (text === 'محاسبه با موجودی من') {
-            const balanceStars = Math.floor(userData.wallet / userData.starPricePerUnit);
-            const checkMsg = `موجودی اصلی شما: ${userData.wallet.toLocaleString()} تومان\nمعادل حدود ${balanceStars} استارز می‌توانید خریداری کنید.\nلطفاً تعداد استارز مورد نظر را وارد کنید:`;
-            await safeSendMessage(chatId, checkMsg, backKeyboard);
-            return;
-        }
-
         const countInput = parseInt(text);
         if (isNaN(countInput) || countInput < 5) {
             await safeSendMessage(chatId, '❌ حداقل خرید ۵ استارز است:', backKeyboard);
@@ -981,21 +901,15 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if (text === '🎁 اعمال تخفیف' && userData.currentShopState === 'star_invoice') {
-        const discountWalletVal = userData.discountWallet || 0;
-        if (discountWalletVal <= 0) {
-            await safeSendMessage(chatId, 'موجودی تخفیف شما کافی نیست.', backKeyboard);
+    if (text === '💳 پرداخت از کیف پول (تایید)' && userData.currentShopState === 'star_invoice') {
+        if (userData.wallet < userData.lastAmount) {
+            await safeSendMessage(chatId, '❌ موجودی کیف پول شما کافی نیست!', backKeyboard);
             return;
         }
-        const totalPrice = userData.starCount * (userData.starPricePerUnit || 3850);
-        userData.lastAmount = Math.max(0, totalPrice - discountWalletVal);
-        saveDatabase();
-        await showStarInvoice(chatId, userData);
-        await safeSendMessage(chatId, `موجودی تخفیف (${discountWalletVal.toLocaleString()} تومان) روی فاکتور اعمال شد!`, backKeyboard);
-        return;
-    }
 
-    if (text === '✅ تایید' && userData.currentShopState === 'star_invoice') {
+        userData.wallet -= userData.lastAmount;
+        saveDatabase();
+
         const trackingCode = 'STR-' + Math.floor(10000 + Math.random() * 90000);
         const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
 
@@ -1013,10 +927,10 @@ bot.on('message', async (msg) => {
         };
         saveDatabase();
 
-        const userConfirmMsg = `سفارش شما با این فاکتور ثبت و منتظر واریزی هستیم\n\nکد پیگیری: \`${trackingCode}\`\nمقدار: ${userData.starCount} استارز\nمبلغ نهایی: ${userData.lastAmount.toLocaleString()} تومان`;
+        const userConfirmMsg = `✅ پرداخت با موفقیت از کیف پول انجام شد و سفارش شما ثبت گردید!\n\nکد پیگیری: \`${trackingCode}\`\nمقدار: ${userData.starCount} استارز\nمبلغ کسر شده: ${userData.lastAmount.toLocaleString()} تومان`;
         await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
 
-        const adminOrderMsg = `[ سفارش جدید خرید استارز ]\n\nکاربر: ${userData.firstName} (${chatId})\nکد پیگیری: \`${trackingCode}\`\nمقدار: ${userData.starCount} استارز\nیوزر دریافت‌کننده: @${userData.starRecipient}\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
+        const adminOrderMsg = `[ سفارش جدید خرید استارز (پرداخت کیف پول) ]\n\nکاربر: ${userData.firstName} (${chatId})\nکد پیگیری: \`${trackingCode}\`\nمقدار: ${userData.starCount} استارز\nیوزر دریافت‌کننده: @${userData.starRecipient}\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
         const adminOrderMarkup = {
             reply_markup: {
                 inline_keyboard: [
@@ -1207,30 +1121,64 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    // هندلر مستقیم برای دکمه «برای خودم» یا ارسال آیدی در مرحله انتخاب دریافت‌کننده استارز یا گیفت
-    if (text && (text.startsWith('برای خودم') || userData.currentShopState === 'star_recipient' || userData.currentShopState === 'gift_recipient')) {
+    // هندلر انتخاب پکیج‌های استارز
+    if (text && (text === '⭐ 50' || text === '⭐ 100' || text === '⭐ 200' || text === '⭐ 500')) {
+        const count = parseInt(text.replace('⭐', '').trim());
+        userData.starCount = count;
+        userData.waitingForStarRecipient = true;
+        userData.currentShopState = 'star_recipient';
+        saveDatabase();
+
+        const selfName = msg.from.first_name || 'کاربر';
+        const recipientKeyboard = {
+            reply_markup: {
+                keyboard: [
+                    [{ text: `✅ برای خودم ( ${selfName} )`, style: 'success' }],
+                    [{ text: '🔙 بازگشت به پکیج‌ها', style: 'danger' }, { text: '🏠 منوی اصلی', style: 'danger' }]
+                ],
+                resize_keyboard: true
+            }
+        };
+        const recipientMsg = `⭐ مقدار انتخاب شده: ${userData.starCount} استارز\n💰 قیمت: ${(userData.starCount * userData.starPricePerUnit).toLocaleString()} تومان\n\n👤 یوزرنیم گیرنده استارز را ارسال کنید:\nمثال: username@`;
+        await safeSendMessage(chatId, recipientMsg, recipientKeyboard);
+        return;
+    }
+
+    if (text === '✏️ مقدار دلخواه') {
+        userData.waitingForCustomStarInput = true;
+        userData.currentShopState = 'star_custom_input';
+        saveDatabase();
+        const customPrompt = `✏️ مقدار دلخواه استارز رو بنویس (حداقل 50):`;
+        const customKeyboard = {
+            reply_markup: {
+                keyboard: [
+                    [{ text: '🔙 بازگشت به پکیج‌ها', style: 'danger' }, { text: '🏠 منوی اصلی', style: 'danger' }]
+                ],
+                resize_keyboard: true
+            }
+        };
+        await safeSendMessage(chatId, customPrompt, customKeyboard);
+        return;
+    }
+
+    // هندلر دکمه «برای خودم» یا ارسال آیدی گیرنده استارز
+    if (text && (text.startsWith('✅ برای خودم') || userData.waitingForStarRecipient)) {
         let usernameInput = text.trim();
-        if (usernameInput.startsWith('برای خودم')) {
+        if (usernameInput.startsWith('✅ برای خودم')) {
             usernameInput = msg.from.username || msg.from.first_name || 'کاربر';
         }
         if (usernameInput.startsWith('@')) {
             usernameInput = usernameInput.substring(1);
         }
 
-        if (userData.currentShopState === 'star_recipient' || userData.waitingForStarRecipient) {
-            userData.waitingForStarRecipient = false;
-            userData.starRecipient = usernameInput;
-            userData.currentShopState = 'star_invoice';
-            saveDatabase();
-            await showStarInvoice(chatId, userData);
-            return;
-        } else if (userData.currentShopState === 'gift_recipient') {
-            userData.recipientUsername = usernameInput;
-            userData.currentShopState = 'gift_invoice';
-            saveDatabase();
-            await showGiftInvoice(chatId, userData);
-            return;
-        }
+        userData.waitingForStarRecipient = false;
+        userData.starRecipient = usernameInput;
+        userData.currentShopState = 'star_invoice';
+        saveDatabase();
+
+        await safeSendMessage(chatId, `✅ اطلاعات گیرنده با موفقیت تایید شد.`);
+        await showStarInvoice(chatId, userData);
+        return;
     }
 
     if (text && text.startsWith('/start')) {
@@ -1270,29 +1218,30 @@ bot.on('message', async (msg) => {
         saveDatabase();
         await safeSendMessage(chatId, 'خدمات مورد نظر خود را انتخاب کنید :', getShopKeyboard());
     }
-    else if (text === '🌟 استارز') {
+    else if (text === '⭐ استارز تلگرام (Telegram Stars)') {
         userData.currentShopState = 'star_menu';
-        userData.waitingForStarCount = true;
+        userData.waitingForStarCount = false;
         const starsPrice = await fetchStarsPrice();
         userData.starPricePerUnit = starsPrice;
         saveDatabase();
 
         const starMsg = 
-            `وقتشه درخشیدن با استارز تلگرامه !\n\n` +
-            `کاربردهای استارز :\n` +
-            `فعال‌سازی ری‌اکشن‌های استارز در چت‌ها\n` +
-            `خرید یا تمدید اکانت پرمیوم تلگرام\n` +
-            `پرداخت هزینه تبلیغات تلگرام و تبلیغ کانال یا ربات خود\n` +
-            `استفاده در خریدهای درون‌برنامه‌ای و مینی‌اپ‌ها\n\n` +
-            `سفارش‌های استارز در کمتر از ۲ دقیقه انجام میشن ، با پشتیبانی کامل و لحظه‌ای!\n\n` +
-            `حداقل خرید : 50 استارز\n` +
-            `لطفاً تعداد استارز مورد نظر خود را ارسال کنید:`;
+            `⭐ استارز تلگرام (Telegram Stars)\n\n` +
+            `✨ با استارز، دنیای جدیدی از تعامل و امکانات در تلگرام را تجربه کنید!\n\n` +
+            `⭐ کاربردهای استارز تلگرام:\n` +
+            `• خرید آیتم‌ها و امکانات مختلف در مینی‌اپ‌ها\n` +
+            `• امکان ری‌اکشن‌های استارزی روی پست‌ها\n` +
+            `• خرید مستقیم گیفت‌ها و اشتراک پرمیوم تلگرام برای خود یا دوستانتان\n\n` +
+            `⚡ سفارشات شما به صورت خودکار و در کمتر از 1 دقیقه انجام می‌شود.\n\n` +
+            `👇 لطفاً مقدار استارز مورد نظر را انتخاب کنید`;
 
         const starMenuKeyboard = {
             reply_markup: {
                 keyboard: [
-                    [{ text: 'محاسبه با موجودی من', style: 'success' }],
-                    [{ text: '🔙 بازگشت', style: 'danger' }]
+                    [{ text: '⭐ 50', style: 'success' }, { text: '⭐ 100', style: 'success' }],
+                    [{ text: '⭐ 200', style: 'success' }, { text: '⭐ 500', style: 'success' }],
+                    [{ text: '✏️ مقدار دلخواه', style: 'primary' }],
+                    [{ text: '🔙 بازگشت به منوی اصلی', style: 'danger' }]
                 ],
                 resize_keyboard: true
             }
@@ -1449,10 +1398,12 @@ bot.on('message', async (msg) => {
             await safeSendMessage(chatId, recipientMsg, recipientKeyboard);
         }
     }
-    else if (text === '❌ لغو خرید') {
-        userData.currentShopState = null;
+    else if (text && text.startsWith('برای خودم')) {
+        const selfUsername = msg.from.username || msg.from.first_name;
+        userData.recipientUsername = selfUsername;
+        userData.currentShopState = 'gift_invoice';
         saveDatabase();
-        await safeSendMessage(chatId, 'خرید شما لغو شد.', mainKeyboard);
+        await showGiftInvoice(chatId, userData);
     }
     else if (text === '💳 اعمال کد تخفیف') {
         userData.waitingForDiscountInput = true;
