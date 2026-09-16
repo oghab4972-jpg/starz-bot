@@ -1,0 +1,20 @@
+body {
+    background-color: var(--tg-theme-bg-color, #18222d);
+    color: var(--tg-theme-text-color, #ffffff);
+    font-family: Tahoma, sans-serif;
+    margin: 0;
+    padding: 20px;
+}
+.container { max-width: 500px; margin: auto; text-align: center; }
+header { margin-bottom: 30px; }
+.card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 15px;
+    cursor: pointer;
+}
+h3 { margin: 0 0 8px 0; color: #52b8ff; }
+p { margin: 0; font-size: 14px; color: #a8b2bc; }
+
