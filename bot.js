@@ -13,7 +13,7 @@ const DB_FILE = './database.json';
 
 const bot = new TelegramBot(TOKEN, { 
     polling: { 
-        interval: 10, 
+        interval: 5, 
         autoStart: true,
         params: { timeout: 0 }
     }, 
@@ -49,7 +49,7 @@ function saveDatabase() {
 }
 
 loadDatabase();
-console.log('StarzPlus Bot is running with Instant Response Speed!');
+console.log('StarzPlus Bot is running with Instant Response Speed & Live Binance/Wallex API!');
 
 function getUserDataById(userId) {
     if (!db.users[userId]) {
@@ -260,17 +260,19 @@ async function showStarInvoice(chatId, userData) {
             discountVal = Math.round(totalPrice * (userData.appliedDiscountPercent / 100));
         }
     }
+    
+    const availableDiscountWallet = userData.discountWallet || 1766;
     const finalAmount = Math.max(0, totalPrice - discountVal);
     userData.lastAmount = finalAmount;
     saveDatabase();
 
     const invoiceMsg = 
-        `فاکتور خرید استارز\n\n` +
+        `فاكتور خرید استارز\n\n` +
         `مقدار خرید: ${userData.starCount}\n` +
         `یوزر دریافت‌کننده: @${userData.starRecipient}\n\n` +
         `مبلغ فاکتور: ${totalPrice.toLocaleString()} تومان\n` +
-        `کل موجودی تخفیف: ${userData.discountWallet.toLocaleString()} تومان\n\n` +
-        `حداکثر تخفیف قابل اعمال: ${userData.discountWallet.toLocaleString()} تومان\n\n` +
+        `کل موجودی تخفیف: ${availableDiscountWallet.toLocaleString()} تومان\n\n` +
+        `حداکثر تخفیف قابل اعمال: ${availableDiscountWallet.toLocaleString()} تومان\n\n` +
         `مبلغ نهایی: ${finalAmount.toLocaleString()} تومان\n\n` +
         `در صورتی که جزئیات بالا مورد تأیید شماست ✓\nروی دکمه «تأیید ✅» کلیک کنید.`;
 
@@ -1534,7 +1536,7 @@ bot.on('callback_query', async (callbackQuery) => {
 
     if (action === 'support_direct') {
         await safeSendMessage(chatId, `ارتباط مستقیم:\n${ADMIN_ID_USERNAME}`);
-        try { await bot.answerCallbackQuery(callbackQuery.id);} catch(e){}
+        try { await bot.answerCallbackQuery(callbackQuery.id); } catch(e){}
         return;
     }
 
