@@ -6,7 +6,7 @@ const http = require('http');
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('StarzPlus Bot is running live with Wallex API!\n');
+    res.end('StarzPlus Bot is running live!\n');
 }).listen(PORT, () => {
     console.log(`Web server is running on port ${PORT}`);
 });
@@ -20,9 +20,6 @@ const ADMIN_ID_USERNAME = '@shantiaNFT';
 const ADMIN_NUMERIC_ID = 8942987641;
 const DB_FILE = './database.json';
 
-const TON_USD_RATE = 5.5;
-const STAR_USD_RATE = 0.015;
-
 const bot = new TelegramBot(TOKEN, { 
     polling: { 
         interval: 300, 
@@ -35,14 +32,17 @@ const bot = new TelegramBot(TOKEN, {
 process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
 process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled Rejection:', reason); });
 
-let db = { users: {}, orders: {}, discountCodes: {}, settings: {} };
+let db = { users: {}, orders: {}, discountCodes: {} };
+
+// مقادیر ثابت دلاری بر اساس کد قبلی شما
+const TON_USD = 5.5;
+const STAR_USD = 0.015;
 
 function loadDatabase() {
     try {
         if (fs.existsSync(DB_FILE)) {
             const data = fs.readFileSync(DB_FILE, 'utf8');
             db = JSON.parse(data);
-            if (!db.settings) db.settings = {};
         } else {
             saveDatabase();
         }
@@ -60,7 +60,7 @@ function saveDatabase() {
 }
 
 loadDatabase();
-console.log('StarzPlus Bot is running with Live Wallex USDT Engine!');
+console.log('StarzPlus Bot is running!');
 
 function getUserDataById(userId) {
     if (!db.users[userId]) {
@@ -146,21 +146,20 @@ async function safeSendMessage(chatId, text, options = {}) {
     }
 }
 
-function fetchLiveUsdtRate() {
+// دریافت قیمت لحظه ای تتر از API والکس
+async function getUsdtToToman() {
     return new Promise((resolve) => {
-        const options = {
-            hostname: 'api.wallex.ir',
-            path: '/v1/markets',
-            headers: { 'User-Agent': 'Mozilla/5.0' }
-        };
-        https.get(options, (res) => {
+        https.get('https://api.wallex.ir/v1/markets', { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
             let data = '';
-            res.on('data', (chunk) => { data += chunk; });
+            res.on('data', chunk => data += chunk);
             res.on('end', () => {
                 try {
-                    const json = JSON.parse(data);
-                    const usdtPrice = parseFloat(json.result.symbols.USDTTMN.stats.lastPrice);
-                    resolve(usdtPrice > 0 ? usdtPrice : 65000);
+                    const parsed = JSON.parse(data);
+                    if (parsed && parsed.result && parsed.result.symbols && parsed.result.symbols.USDTTMN) {
+                        resolve(parseFloat(parsed.result.symbols.USDTTMN.stats.lastPrice));
+                    } else {
+                        resolve(65000); // قیمت پیش فرض در صورت خطا
+                    }
                 } catch (e) {
                     resolve(65000);
                 }
@@ -171,21 +170,17 @@ function fetchLiveUsdtRate() {
     });
 }
 
-function fetchTonData() {
-    return new Promise(async (resolve) => {
-        const usdtToman = await fetchLiveUsdtRate();
-        const tonToman = TON_USD_RATE * usdtToman;
-        const finalPrice = Math.round(tonToman + 20000);
-        resolve({ tonUsd: TON_USD_RATE.toFixed(2), finalPrice, usdtToman });
-    });
+async function fetchTonData() {
+    const usdtToman = await getUsdtToToman();
+    const tonToman = TON_USD * usdtToman;
+    const finalPrice = Math.round(tonToman + 20000);
+    return { tonUsd: TON_USD.toFixed(2), finalPrice, usdtToman };
 }
 
-function fetchStarsPrice() {
-    return new Promise(async (resolve) => {
-        const usdtToman = await fetchLiveUsdtRate();
-        const starToman = (STAR_USD_RATE * usdtToman) + 300;
-        resolve(Math.round(starToman));
-    });
+async function fetchStarsPrice() {
+    const usdtToman = await getUsdtToToman();
+    const starToman = (STAR_USD * usdtToman) + 300;
+    return Math.round(starToman);
 }
 
 async function showGiftInvoice(chatId, userData) {
@@ -956,7 +951,7 @@ bot.on('message', async (msg) => {
         saveDatabase();
         
         const amount = userData.lastAmount;
-        
+
         const adminCaption = `[ رسید پرداخت جدید ]\n\nنام کاربر: ${userData.firstName}\nآیدی عددی: \`${chatId}\`\nمبلغ: ${amount.toLocaleString()} تومان`;
         const adminMarkup = {
             inline_keyboard: [
@@ -970,14 +965,12 @@ bot.on('message', async (msg) => {
 
         const userMarkup = {
             inline_keyboard: [
-                [{ text: '💬 پیگیری رسید', callback_data: 'track_receipt_main' }]
+                [{ text: 'پیگیری رسید 💬', callback_data: 'track_receipt_main' }]
             ]
         };
-        const receiptMsg = 
-            `رسید شما با موفقیت دریافت شد !\n\n` +
-            `پس از تأیید رسید شما توسط مدیریت ، سفارش به صورت خودکار ثبت و پردازش می‌شود. ♻️\n\n` +
-            `⚠️ اگر تأیید رسید شما بیش از زمان معمول به طول انجامید، برای پیگیری سریع‌تر روی دکمه 💬 «پیگیری رسید» کلیک کنید و با پشتیبانی در ارتباط باشید.`;
-            
+        
+        const receiptMsg = `رسید شما با موفقیت دریافت شد !\n\nپس از تأیید رسید شما توسط مدیریت ، سفارش به‌صورت خودکار ثبت و پردازش می‌شود.\n\n⚠️ اگر تأیید رسید شما بیش از زمان معمول به طول انجامید ، برای پیگیری سریع‌تر روی دکمه «پیگیری رسید 💬» کلیک کنید و با پشتیبانی در ارتباط باشید.`;
+        
         await safeSendMessage(chatId, receiptMsg, { reply_markup: userMarkup });
         return;
     }
@@ -1026,16 +1019,16 @@ bot.on('message', async (msg) => {
         };
         await safeSendMessage(chatId, 'پنل مدیریت:', adminPanelMarkup);
     }
-    else if (isAdmin && text === '🏷️ ساخت کد تخفیف') {
-        adminData.waitingForDiscountPercent = true;
-        saveDatabase();
-        await safeSendMessage(chatId, 'چند درصد تخفیف می‌خواهید بسازید؟ (فقط عدد بین 1 تا 100):');
-    }
     else if (isAdmin && ['➕ افزایش موجودی کاربر', '➖ کاهش موجودی کاربر', '🏆 تغییر سطح کاربر', '💳 تایید احراز هویت کاربر', '🚫 بن کردن کاربر', '✅ آنبن کردن کاربر'].includes(text)) {
         adminData.adminAction = text;
         adminData.waitingForAdminUserSearch = true;
         saveDatabase();
         await safeSendMessage(chatId, `لطفاً آیدی عددی کاربر را وارد کنید:`);
+    }
+    else if (isAdmin && text === '🏷️ ساخت کد تخفیف') {
+        adminData.waitingForDiscountPercent = true;
+        saveDatabase();
+        await safeSendMessage(chatId, 'چند درصد تخفیف می‌خواهید بسازید؟ (فقط عدد بین 1 تا 100):');
     }
     else if (text === '🛒 خرید محصول') {
         userData.currentShopState = 'main_shop';
@@ -1088,20 +1081,7 @@ bot.on('message', async (msg) => {
                 resize_keyboard: true
             }
         };
-        
-        const tonFlowMsg = 
-            `[ خرید ارز تون ] 🪙\n\n` +
-            `با خرید ارز تون، می‌توانید ارز تون را مستقیماً به آدرس ولت خود دریافت کنید!\n\n` +
-            `مزایای خرید ارز تون:\n` +
-            `• دریافت مستقیم به آدرس ولت شما 🪪\n` +
-            `• کاملاً امن و قانونی 🔒\n` +
-            `• تراکنش سریع ⚡\n\n` +
-            `📊 قیمت هر تون: ${tonData.finalPrice.toLocaleString()} تومان\n` +
-            `📊 حداقل خرید : 0.1 تون\n\n` +
-            `🔢 لطفاً تعداد تون مورد نظر خود را وارد کنید:\n` +
-            `(می‌توانید عدد اعشار وارد کنید، مثال: 2.5)`;
-
-        await safeSendMessage(chatId, tonFlowMsg, tonWalletFlowKeyboard);
+        await safeSendMessage(chatId, `لطفاً تعداد تون مورد نظر خود را وارد کنید:`, tonWalletFlowKeyboard);
         userData.waitingForTonAmount = true;
         saveDatabase();
     }
