@@ -1,6 +1,14 @@
 const TelegramModule = require('node-telegram-bot-api');
 const fs = require('fs');
 const https = require('https');
+const http = require('http');
+
+// وب‌سرور برای اینکه رندر سرویس را نبندد
+const PORT = process.env.PORT || 10000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('StarzPlus Bot is running with Wallex API!\n');
+}).listen(PORT);
 
 const TelegramBot = typeof TelegramModule === 'function' 
     ? TelegramModule 
@@ -31,6 +39,8 @@ function loadDatabase() {
             const data = fs.readFileSync(DB_FILE, 'utf8');
             db = JSON.parse(data);
             if (!db.settings) db.settings = { manualTonUsd: 1.31, manualStarUsd: 0.015 };
+        } else {
+            saveDatabase();
         }
     } catch (e) {
         console.error('Error loading database:', e.message);
@@ -46,7 +56,7 @@ function saveDatabase() {
 }
 
 loadDatabase();
-console.log('StarzPlus Bot is running with Live Nobitex USDT & Smart Profit Engine!');
+console.log('StarzPlus Bot is running with Live Wallex USDT & Smart Profit Engine!');
 
 function getUserDataById(userId) {
     if (!db.users[userId]) {
@@ -112,7 +122,28 @@ function getUserDataById(userId) {
     }
     return db.users[userId];
 }
-// تابع دریافت نرخ لایو تتر از API رایگان والکس
+
+function getUserData(msg) {
+    if (!msg.from) return getUserDataById(msg.chat.id);
+    const user = msg.from;
+    const chatId = user.id;
+    const userData = getUserDataById(chatId);
+    if (user.first_name && userData.firstName === 'کاربر') {
+        userData.firstName = user.first_name;
+        saveDatabase();
+    }
+    return userData;
+}
+
+async function safeSendMessage(chatId, text, options = {}) {
+    try {
+        return await bot.sendMessage(chatId, text, { parse_mode: 'Markdown', ...options });
+    } catch (err) {
+        console.error(`Failed to send message to ${chatId}:`, err.message);
+    }
+}
+
+// اتصال به API رایگان صرافی والکس برای دریافت نرخ لحظه‌ای تتر
 function fetchLiveUsdtRate() {
     return new Promise((resolve) => {
         const options = {
@@ -126,48 +157,8 @@ function fetchLiveUsdtRate() {
             res.on('end', () => {
                 try {
                     const json = JSON.parse(data);
-                    // پیدا کردن قیمت تتر (USDTIRT) از لیست بازارهای والکس
                     const usdtMarket = json.result.symbols['USDTIRT'];
                     const usdtToman = parseFloat(usdtMarket.stats.lastPrice);
-                    resolve(usdtToman > 0 ? usdtToman : 230000);
-                } catch (e) {
-                    resolve(230000); // قیمت پیش‌فرض در صورت خطا
-                }
-            });
-        }).on('error', () => {
-            resolve(230000);
-        });
-    });
-}
-
-    
-        
-        
-    
-    
-async function safeSendMessage(chatId, text, options = {}) {
-    try {
-        return await bot.sendMessage(chatId, text, { parse_mode: 'Markdown', ...options });
-    } catch (err) {
-        console.error(`Failed to send message to ${chatId}:`, err.message);
-    }
-}
-
-// تابع دریافت نرخ لایو تتر از صرافی نوبیتکس
-function fetchLiveUsdtRate() {
-    return new Promise((resolve) => {
-        const options = {
-            hostname: 'api.nobitex.ir',
-            path: '/v2/orderbook/USDTIRT',
-            headers: { 'User-Agent': 'Mozilla/5.0' }
-        };
-        https.get(options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => { data += chunk; });
-            res.on('end', () => {
-                try {
-                    const json = JSON.parse(data);
-                    const usdtToman = parseFloat(json.lastTradePrice) / 10;
                     resolve(usdtToman > 0 ? usdtToman : 230000);
                 } catch (e) {
                     resolve(230000);
@@ -179,7 +170,6 @@ function fetchLiveUsdtRate() {
     });
 }
 
-// محاسبه قیمت تون: (قیمت دلاری ادمین * نرخ تتر لایو نوبیتکس) + 20,000 تومان سود ثابت
 function fetchTonData() {
     return new Promise(async (resolve) => {
         const usdtToman = await fetchLiveUsdtRate();
@@ -190,7 +180,6 @@ function fetchTonData() {
     });
 }
 
-// محاسبه قیمت استارز: (قیمت دلاری ادمین * نرخ تتر لایو نوبیتکس) + 1,000 تومان سود ثابت برای هر استار
 function fetchStarsPrice() {
     return new Promise(async (resolve) => {
         const usdtToman = await fetchLiveUsdtRate();
@@ -597,8 +586,7 @@ bot.on('message', async (msg) => {
                         [{ text: '🏆 تغییر سطح کاربر' }, { text: '💳 تایید احراز هویت کاربر' }],
                         [{ text: '🚫 بن کردن کاربر' }, { text: '✅ آنبن کردن کاربر' }],
                         [{ text: '🏷️ ساخت کد تخفیف' }, { text: '⚙️ تنظیم قیمت دلاری تون' }, { text: '⚙️ تنظیم قیمت دلاری استارز' }],
-                        [{ text: '🔙 بازگشت به منوی اصلی' }] // ✅ درست شد
-
+                        [{ text: '🔙 بازگشت به منوی اصلی' ]]
                     ], resize_keyboard: true
                 }
             };
