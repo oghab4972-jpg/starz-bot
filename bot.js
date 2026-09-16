@@ -56,7 +56,7 @@ const STAR_USD = 0.015;
  * Fallback price for USDT to Toman in case Wallex API is unreachable.
  * @constant {number}
  */
-const FALLBACK_USDT_TOMAN = 65000;
+const FALLBACK_USDT_TOMAN = 299891;
 
 /**
  * Fallback price for TON to USD in case Binance API is unreachable.
@@ -445,7 +445,7 @@ async function getUsdtToToman() {
 
 async function fetchStarsPrice() {
     const rawUsdtToman = await getUsdtToToman();
-    const adjustedUsdtToman = rawUsdtToman + 1000;
+    const adjustedUsdtToman = rawUsdtToman + 20000;
     const starToman = (STAR_USD * adjustedUsdtToman);
     return Math.round(starToman);
 }
@@ -475,7 +475,7 @@ async function getBinancePriceUsd(symbol) {
 
 async function fetchTonData() {
     const rawUsdt = await getUsdtToToman();
-    const usdtToman = rawUsdt + 1000;
+    const usdtToman = rawUsdt + 20000;
     const tonUsd = await getBinancePriceUsd('TONUSDT');
     const tonToman = tonUsd * usdtToman;
     const finalPrice = Math.round(tonToman + 20000);
@@ -484,7 +484,7 @@ async function fetchTonData() {
 
 async function fetchTrxData() {
     const rawUsdt = await getUsdtToToman();
-    const usdtToman = rawUsdt + 1000;
+    const usdtToman = rawUsdt + 20000;
     const trxUsd = await getBinancePriceUsd('TRXUSDT');
     const trxToman = trxUsd * usdtToman;
     const finalPrice = Math.round(trxToman + 5000);
@@ -500,7 +500,7 @@ function getMainKeyboard(isAdmin) {
         [{ text: '🛒 خرید محصول' }],
         [{ text: '➕ افزایش موجودی' }, { text: '💳 حساب کاربری' }],
         [{ text: '📞 پشتیبانی' }, { text: '📦 پیگیری سفارش' }],
-        [{ text: '❤️ چطور میتوانم به شما اعتماد کنم' }]
+        [{ text: '❤️ چه طور میتوانم به شما اعتماد کنم' }]
     ];
     if (isAdmin) {
         rows.push([{ text: '🔧 پنل مدیریت' }]);
@@ -617,7 +617,7 @@ async function showBoostInvoice(chatId, userData) {
 
 async function showGiftInvoice(chatId, userData) {
     const rawUsdtToman = await getUsdtToToman();
-    const adjustedUsdtToman = rawUsdtToman + 1000;
+    const adjustedUsdtToman = rawUsdtToman + 20000;
     const starziUsdPrice = userData.selectedGiftStars * STAR_USD;
     const starziTomanPerUnit = starziUsdPrice * adjustedUsdtToman + 1000;
     const totalPrice = Math.round(starziTomanPerUnit * userData.giftCount);
