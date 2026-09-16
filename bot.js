@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 10000;
 app.use(express.static(path.join(__dirname, 'public')));
 
 // اگر کسی آدرس اصلی را باز کرد، فایل index.html مینی‌اپ فرستاده شود نه متن ساده
-app.get('/', (req, res) => {
+app.get('/', (req, res) => {َ
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
