@@ -6,7 +6,7 @@ const http = require('http');
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('StarzPlus Bot is running live with High Speed API!\n');
+    res.end('StarzPlus Bot is running live with Instant High Speed API!\n');
 }).listen(PORT, () => {
     console.log(`Web server is running on port ${PORT}`);
 });
@@ -22,9 +22,9 @@ const DB_FILE = './database.json';
 
 const bot = new TelegramBot(TOKEN, { 
     polling: { 
-        interval: 100, 
+        interval: 50, 
         autoStart: true,
-        params: { timeout: 5 }
+        params: { timeout: 2 }
     }, 
     filepath: false 
 });
@@ -59,7 +59,7 @@ function saveDatabase() {
 }
 
 loadDatabase();
-console.log('StarzPlus Bot is running with Instant Response & High Speed API!');
+console.log('StarzPlus Bot is running with Instant Response Speed!');
 
 function getUserDataById(userId) {
     if (!db.users[userId]) {
