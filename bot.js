@@ -4,16 +4,23 @@ const fs = require('fs');
 const https = require('https');
 const path = require('path');
 
-// راه‌اندازی وب‌سرور و مینی‌اپ برای رندر (اصلاح شده برای نمایش صحیح مینی‌اپ)
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// اتصال دقیق پوشه public برای اجرای صحیح مینی‌اپ
 app.use(express.static(path.join(__dirname, 'public')));
+
+// اگر کسی آدرس اصلی را باز کرد، فایل index.html مینی‌اپ فرستاده شود نه متن ساده
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 app.get('/health', (req, res) => res.send('StarzPlus Bot and Mini App are running live!'));
 
 app.listen(PORT, () => {
     console.log(`Web server & Mini App are running on port ${PORT}`);
 });
+
 
 const TelegramBot = typeof TelegramModule === 'function' 
     ? TelegramModule 
