@@ -71,7 +71,7 @@ function getUserDataById(userId) {
             isBanned: false,
             level: 'سطح 1',
             wallet: 0,
-            discountWallet: 0,
+            discountWallet: 1766,
             waitingForAmount: false,
             waitingForTicket: false,
             waitingForReceipt: false, 
@@ -240,6 +240,7 @@ async function showStarInvoice(chatId, userData) {
     const unitPrice = userData.starPricePerUnit || 3798; 
     const totalPrice = unitPrice * userData.starCount;
     let currentAmount = totalPrice;
+    let discountWalletVal = userData.discountWallet || 1766;
 
     if (userData.appliedDiscountPercent > 0) {
         const discountVal = Math.round(totalPrice * (userData.appliedDiscountPercent / 100));
@@ -248,25 +249,21 @@ async function showStarInvoice(chatId, userData) {
     userData.lastAmount = currentAmount;
     saveDatabase();
 
-    const hasEnoughWallet = userData.wallet >= currentAmount;
-
     const invoiceMsg = 
-        `📦 پیش‌فاکتور نهایی خرید\n\n` +
-        `⭐ محصول انتخابی: ⭐ ${userData.starCount} استارز تلگرام\n` +
-        `👤 اکانت گیرنده: @${userData.starRecipient}\n` +
-        `📍 قیمت اصلی: ${totalPrice.toLocaleString()} تومان\n\n` +
-        `💰 مبلغ نهایی قابل پرداخت: ${currentAmount.toLocaleString()} تومان\n` +
-        `💳 موجودی کیف پول شما: ${userData.wallet.toLocaleString()} تومان\n\n` +
-        `⏳ این فاکتور تنها 15 دقیقه اعتبار دارد.`;
+        `📑 فاکتور خرید استارز\n\n` +
+        `💫 مقدار خرید: ${userData.starCount}\n` +
+        `🔗 یوزر دریافت‌کننده: @${userData.starRecipient}\n\n` +
+        `💰 مبلغ فاکتور: ${totalPrice.toLocaleString()} تومان\n` +
+        `🎁 کل موجودی تخفیف: ${discountWalletVal.toLocaleString()} تومان\n\n` +
+        `💡 حداکثر تخفیف قابل اعمال: ${discountWalletVal.toLocaleString()} تومان\n\n` +
+        `💳 مبلغ نهایی: ${currentAmount.toLocaleString()} تومان\n\n` +
+        `🔮 در صورتی که جزئیات بالا مورد تأیید شماست ✓ \nروی دکمه «تأیید ✅» کلیک کنید.`;
 
-    let actionButtonText = hasEnoughWallet ? '💳 پرداخت از کیف پول (تایید)' : '❌ موجودی کیف پول کافی نیست';
-    
     const invoiceKeyboard = {
         reply_markup: {
             keyboard: [
-                [{ text: actionButtonText, style: hasEnoughWallet ? 'success' : 'danger' }],
-                ...(!hasEnoughWallet ? [[{ text: '➕ افزایش موجودی', style: 'primary' }]] : []),
-                [{ text: '🏷️ اعمال کد تخفیف', style: 'primary' }],
+                [{ text: 'تأیید ✅', style: 'success' }, { text: 'لغو خرید ❌', style: 'danger' }],
+                [{ text: '🎁 اعمال تخفیف', style: 'primary' }, { text: '💳 اعمال کد تخفیف', style: 'primary' }],
                 [{ text: '🔙 بازگشت به پکیج‌ها', style: 'danger' }, { text: '🏠 منوی اصلی', style: 'danger' }]
             ],
             resize_keyboard: true
@@ -901,15 +898,21 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if (text === '💳 پرداخت از کیف پول (تایید)' && userData.currentShopState === 'star_invoice') {
-        if (userData.wallet < userData.lastAmount) {
-            await safeSendMessage(chatId, '❌ موجودی کیف پول شما کافی نیست!', backKeyboard);
+    if (text === '🎁 اعمال تخفیف' && userData.currentShopState === 'star_invoice') {
+        const discountWalletVal = userData.discountWallet || 0;
+        if (discountWalletVal <= 0) {
+            await safeSendMessage(chatId, 'موجودی تخفیف شما کافی نیست.', backKeyboard);
             return;
         }
-
-        userData.wallet -= userData.lastAmount;
+        const totalPrice = userData.starCount * (userData.starPricePerUnit || 3798);
+        userData.lastAmount = Math.max(0, totalPrice - discountWalletVal);
         saveDatabase();
+        await showStarInvoice(chatId, userData);
+        await safeSendMessage(chatId, `موجودی تخفیف (${discountWalletVal.toLocaleString()} تومان) روی فاکتور اعمال شد!`, backKeyboard);
+        return;
+    }
 
+    if (text === 'تأیید ✅' && userData.currentShopState === 'star_invoice') {
         const trackingCode = 'STR-' + Math.floor(10000 + Math.random() * 90000);
         const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
 
@@ -927,10 +930,10 @@ bot.on('message', async (msg) => {
         };
         saveDatabase();
 
-        const userConfirmMsg = `✅ پرداخت با موفقیت از کیف پول انجام شد و سفارش شما ثبت گردید!\n\nکد پیگیری: \`${trackingCode}\`\nمقدار: ${userData.starCount} استارز\nمبلغ کسر شده: ${userData.lastAmount.toLocaleString()} تومان`;
+        const userConfirmMsg = `سفارش شما با این فاکتور ثبت و منتظر واریزی هستیم\n\nکد پیگیری: \`${trackingCode}\`\nمقدار: ${userData.starCount} استارز\nمبلغ نهایی: ${userData.lastAmount.toLocaleString()} تومان`;
         await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
 
-        const adminOrderMsg = `[ سفارش جدید خرید استارز (پرداخت کیف پول) ]\n\nکاربر: ${userData.firstName} (${chatId})\nکد پیگیری: \`${trackingCode}\`\nمقدار: ${userData.starCount} استارز\nیوزر دریافت‌کننده: @${userData.starRecipient}\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
+        const adminOrderMsg = `[ سفارش جدید خرید استارز ]\n\nکاربر: ${userData.firstName} (${chatId})\nکد پیگیری: \`${trackingCode}\`\nمقدار: ${userData.starCount} استارز\nیوزر دریافت‌کننده: @${userData.starRecipient}\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
         const adminOrderMarkup = {
             reply_markup: {
                 inline_keyboard: [
@@ -945,6 +948,13 @@ bot.on('message', async (msg) => {
         await safeSendMessage(ADMIN_NUMERIC_ID, adminOrderMsg, adminOrderMarkup);
         userData.currentShopState = null;
         saveDatabase();
+        return;
+    }
+
+    if (text === 'لغو خرید ❌' && userData.currentShopState === 'star_invoice') {
+        userData.currentShopState = null;
+        saveDatabase();
+        await safeSendMessage(chatId, 'خرید شما لغو شد.', mainKeyboard);
         return;
     }
 
