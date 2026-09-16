@@ -3,12 +3,14 @@ const fs = require('fs');
 const https = require('https');
 const http = require('http');
 
-// وب‌سرور برای اینکه رندر سرویس را نبندد
+// وب‌سرور قدرتمند برای اینکه رندر سرویس را نبندد و ارور ندهد
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('StarzPlus Bot is running with Wallex API!\n');
-}).listen(PORT);
+    res.end('StarzPlus Bot is running live with Wallex API!\n');
+}).listen(PORT, () => {
+    console.log(`Web server is running on port ${PORT}`);
+});
 
 const TelegramBot = typeof TelegramModule === 'function' 
     ? TelegramModule 
@@ -143,7 +145,7 @@ async function safeSendMessage(chatId, text, options = {}) {
     }
 }
 
-// اتصال به API رایگان صرافی والکس برای دریافت نرخ لحظه‌ای تتر
+// تابع دریافت نرخ لایو تتر از صرافی والکس (کاملاً رایگان و بدون نیاز به کلید)
 function fetchLiveUsdtRate() {
     return new Promise((resolve) => {
         const options = {
@@ -170,6 +172,7 @@ function fetchLiveUsdtRate() {
     });
 }
 
+// محاسبه قیمت تون: (قیمت دلاری ادمین * نرخ تتر لایو والکس) + 20,000 تومان سود ثابت
 function fetchTonData() {
     return new Promise(async (resolve) => {
         const usdtToman = await fetchLiveUsdtRate();
@@ -180,6 +183,7 @@ function fetchTonData() {
     });
 }
 
+// محاسبه قیمت استارز: (قیمت دلاری ادمین * نرخ تتر لایو والکس) + 1,000 تومان سود ثابت برای هر استار
 function fetchStarsPrice() {
     return new Promise(async (resolve) => {
         const usdtToman = await fetchLiveUsdtRate();
