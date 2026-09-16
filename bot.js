@@ -6,7 +6,7 @@ const http = require('http');
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('StarzPlus Bot is running live with Updated Shop & API!\n');
+    res.end('StarzPlus Bot is running live with High Speed API!\n');
 }).listen(PORT, () => {
     console.log(`Web server is running on port ${PORT}`);
 });
@@ -22,9 +22,9 @@ const DB_FILE = './database.json';
 
 const bot = new TelegramBot(TOKEN, { 
     polling: { 
-        interval: 300, 
+        interval: 100, 
         autoStart: true,
-        params: { timeout: 10 }
+        params: { timeout: 5 }
     }, 
     filepath: false 
 });
@@ -59,7 +59,7 @@ function saveDatabase() {
 }
 
 loadDatabase();
-console.log('StarzPlus Bot is running with Wallex API & Updated Features!');
+console.log('StarzPlus Bot is running with Instant Response & High Speed API!');
 
 function getUserDataById(userId) {
     if (!db.users[userId]) {
@@ -70,8 +70,6 @@ function getUserDataById(userId) {
             cardVerified: false,
             isBanned: false,
             level: 'سطح 1',
-            totalSpent: 0,
-            score: 0,
             wallet: 6411,
             discountWallet: 1766,
             waitingForAmount: false,
@@ -88,9 +86,10 @@ function getUserDataById(userId) {
             waitingForReactionCount: false,
             waitingForReactionLink: false,
             waitingForStarCount: false,
+            waitingForStarRecipient: false,
             starCount: 50,
             starRecipient: '',
-            starPricePerUnit: 5150,
+            starPricePerUnit: 3850,
             reactionCount: 5,
             reactionLink: '',
             lastAmount: 0,
@@ -111,6 +110,7 @@ function getUserDataById(userId) {
             waitingForAdminAmount: false,
             waitingForRejectReason: false,
             waitingForOrderRejectReason: false,
+            waitingForReceiptRejectReason: false,
             rejectOrderCode: null,
             adminAction: null,
             targetUserId: null,
@@ -184,7 +184,6 @@ async function fetchStarsPrice() {
     return Math.round(starToman);
 }
 
-// کیبوردهای اصلی (بدون زیرمجموعه‌گیری و پرمیوم)
 function getMainKeyboard(isAdmin) {
     let rows = [
         [{ text: '🛒 خرید محصول', style: 'success' }],
@@ -242,7 +241,6 @@ async function showStarInvoice(chatId, userData) {
     let currentAmount = totalPrice;
     let discountWalletVal = userData.discountWallet || 1766;
 
-    let priceDisplay = `${totalPrice.toLocaleString()} تومان`;
     if (userData.appliedDiscountPercent > 0) {
         const discountVal = Math.round(totalPrice * (userData.appliedDiscountPercent / 100));
         currentAmount = Math.max(0, totalPrice - discountVal);
@@ -528,8 +526,8 @@ bot.on('message', async (msg) => {
             const recipientKeyboard = {
                 reply_markup: {
                     keyboard: [
-                        [{ text: `☖ برای خودم ( ${selfName} )`, style: 'success' }],
-                        [{ text: '↶ برگشت', style: 'danger' }]
+                        [{ text: `برای خودم ( ${selfName} )`, style: 'success' }],
+                        [{ text: '🔙 بازگشت', style: 'danger' }]
                     ],
                     resize_keyboard: true
                 }
@@ -983,6 +981,20 @@ bot.on('message', async (msg) => {
         return;
     }
 
+    if (text === '🎁 اعمال تخفیف' && userData.currentShopState === 'star_invoice') {
+        const discountWalletVal = userData.discountWallet || 0;
+        if (discountWalletVal <= 0) {
+            await safeSendMessage(chatId, 'موجودی تخفیف شما کافی نیست.', backKeyboard);
+            return;
+        }
+        const totalPrice = userData.starCount * (userData.starPricePerUnit || 3850);
+        userData.lastAmount = Math.max(0, totalPrice - discountWalletVal);
+        saveDatabase();
+        await showStarInvoice(chatId, userData);
+        await safeSendMessage(chatId, `موجودی تخفیف (${discountWalletVal.toLocaleString()} تومان) روی فاکتور اعمال شد!`, backKeyboard);
+        return;
+    }
+
     if (text === '✅ تایید' && userData.currentShopState === 'star_invoice') {
         const trackingCode = 'STR-' + Math.floor(10000 + Math.random() * 90000);
         const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
@@ -1430,7 +1442,7 @@ bot.on('message', async (msg) => {
         saveDatabase();
         await safeSendMessage(chatId, 'خرید شما لغو شد.', mainKeyboard);
     }
-    else if (text === '💳 اعمال کد تخفیف' || text === '🎁 اعمال تخفیف') {
+    else if (text === '💳 اعمال کد تخفیف') {
         userData.waitingForDiscountInput = true;
         saveDatabase();
         await safeSendMessage(chatId, 'لطفاً کد تخفیف خود را ارسال کنید:', backKeyboard);
@@ -1448,7 +1460,7 @@ bot.on('message', async (msg) => {
         }
     }
     else if (text === '❤️ چطور میتوانم به شما اعتماد کنم' || text === '❤️ چه طور میتوانم به شما اعتماد کنم') {
-        const trustMsg = `استارزپلاس با دارا بودن نماد اعتماد و رضایت هزاران مشتری فعال در خدمت شماست.\n\nکانال رضایت مشتریان:\n@snt_shopp`;
+        const trustMsg = `استارزپلاس با دارا بودن نماد اعتماد و رضایت هزاران مشتری فعال در خدمت شماست.\n\nکانال اعتماد مشتریان:\n@snt_shopp`;
         await safeSendMessage(chatId, trustMsg, backKeyboard);
     }
     else if (text === '📦 پیگیری سفارش') {
