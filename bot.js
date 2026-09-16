@@ -1,16 +1,6 @@
 const TelegramModule = require('node-telegram-bot-api');
 const fs = require('fs');
 const https = require('https');
-const http = require('http');
-
-// وب‌سرور قدرتمند برای اینکه رندر سرویس را نبندد و ارور ندهد
-const PORT = process.env.PORT || 10000;
-http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('StarzPlus Bot is running live with Wallex API!\n');
-}).listen(PORT, () => {
-    console.log(`Web server is running on port ${PORT}`);
-});
 
 const TelegramBot = typeof TelegramModule === 'function' 
     ? TelegramModule 
@@ -33,16 +23,14 @@ const bot = new TelegramBot(TOKEN, {
 process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
 process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled Rejection:', reason); });
 
-let db = { users: {}, orders: {}, discountCodes: {}, settings: { manualTonUsd: 1.31, manualStarUsd: 0.015 } };
+let db = { users: {}, orders: {}, discountCodes: {}, settings: { manualTonUsd: 5.5, manualStarUsd: 0.015 } };
 
 function loadDatabase() {
     try {
         if (fs.existsSync(DB_FILE)) {
             const data = fs.readFileSync(DB_FILE, 'utf8');
             db = JSON.parse(data);
-            if (!db.settings) db.settings = { manualTonUsd: 1.31, manualStarUsd: 0.015 };
-        } else {
-            saveDatabase();
+            if (!db.settings) db.settings = { manualTonUsd: 5.5, manualStarUsd: 0.015 };
         }
     } catch (e) {
         console.error('Error loading database:', e.message);
@@ -58,7 +46,7 @@ function saveDatabase() {
 }
 
 loadDatabase();
-console.log('StarzPlus Bot is running with Live Wallex USDT & Smart Profit Engine!');
+console.log('StarzPlus Bot is running with Live USDT + Manual Dollar Price Engine!');
 
 function getUserDataById(userId) {
     if (!db.users[userId]) {
@@ -145,12 +133,11 @@ async function safeSendMessage(chatId, text, options = {}) {
     }
 }
 
-// تابع دریافت نرخ لایو تتر از صرافی والکس (کاملاً رایگان و بدون نیاز به کلید)
 function fetchLiveUsdtRate() {
     return new Promise((resolve) => {
         const options = {
-            hostname: 'api.wallex.ir',
-            path: '/v1/markets',
+            hostname: 'api.nobitex.ir',
+            path: '/v2/orderbook/USDTIRT',
             headers: { 'User-Agent': 'Mozilla/5.0' }
         };
         https.get(options, (res) => {
@@ -159,36 +146,33 @@ function fetchLiveUsdtRate() {
             res.on('end', () => {
                 try {
                     const json = JSON.parse(data);
-                    const usdtMarket = json.result.symbols['USDTIRT'];
-                    const usdtToman = parseFloat(usdtMarket.stats.lastPrice);
-                    resolve(usdtToman > 0 ? usdtToman : 230000);
+                    const usdtToman = parseFloat(json.lastTradePrice) / 10;
+                    resolve(usdtToman > 0 ? usdtToman : 65000);
                 } catch (e) {
-                    resolve(230000);
+                    resolve(65000);
                 }
             });
         }).on('error', () => {
-            resolve(230000);
+            resolve(65000);
         });
     });
 }
 
-// محاسبه قیمت تون: (قیمت دلاری ادمین * نرخ تتر لایو والکس) + 20,000 تومان سود ثابت
 function fetchTonData() {
     return new Promise(async (resolve) => {
         const usdtToman = await fetchLiveUsdtRate();
-        const tonUsd = db.settings.manualTonUsd || 1.31; 
+        const tonUsd = db.settings.manualTonUsd || 5.5;
         const tonToman = tonUsd * usdtToman;
         const finalPrice = Math.round(tonToman + 20000);
         resolve({ tonUsd: tonUsd.toFixed(2), finalPrice, usdtToman });
     });
 }
 
-// محاسبه قیمت استارز: (قیمت دلاری ادمین * نرخ تتر لایو والکس) + 1,000 تومان سود ثابت برای هر استار
 function fetchStarsPrice() {
     return new Promise(async (resolve) => {
         const usdtToman = await fetchLiveUsdtRate();
         const starUsd = db.settings.manualStarUsd || 0.015;
-        const starToman = (starUsd * usdtToman) + 1000;
+        const starToman = (starUsd * usdtToman) + 300;
         resolve(Math.round(starToman));
     });
 }
@@ -494,7 +478,7 @@ bot.on('message', async (msg) => {
             await safeSendMessage(chatId, `✅ قیمت دلاری تون با موفقیت روی \`$${val}\` تنظیم شد!\nاز این پس ربات با گرفتن نرخ لایو تتر، قیمت ریالی را اتوماتیک محاسبه می‌کند.`);
             return;
         }
-        await safeSendMessage(chatId, '❌ لطفاً یک عدد معتبر وارد کنید (مثلا: `1.31`):');
+        await safeSendMessage(chatId, '❌ لطفاً یک عدد معتبر وارد کنید (مثلا: `5.8`):');
         return;
     }
 
@@ -590,7 +574,7 @@ bot.on('message', async (msg) => {
                         [{ text: '🏆 تغییر سطح کاربر' }, { text: '💳 تایید احراز هویت کاربر' }],
                         [{ text: '🚫 بن کردن کاربر' }, { text: '✅ آنبن کردن کاربر' }],
                         [{ text: '🏷️ ساخت کد تخفیف' }, { text: '⚙️ تنظیم قیمت دلاری تون' }, { text: '⚙️ تنظیم قیمت دلاری استارز' }],
-                        [{ text: '🔙 بازگشت به منوی اصلی' ]]
+                        [{ text: '🔙 بازگشت به منوی اصلی' }]
                     ], resize_keyboard: true
                 }
             };
@@ -1193,7 +1177,7 @@ bot.on('message', async (msg) => {
                     [{ text: '🏆 تغییر سطح کاربر' }, { text: '💳 تایید احراز هویت کاربر' }],
                     [{ text: '🚫 بن کردن کاربر' }, { text: '✅ آنبن کردن کاربر' }],
                     [{ text: '🏷️ ساخت کد تخفیف' }, { text: '⚙️ تنظیم قیمت دلاری تون' }, { text: '⚙️ تنظیم قیمت دلاری استارز' }],
-                    [{ text: '🔙 بازگشت به منوی اصلی' ]]
+                    [{ text: '🔙 بازگشت به منوی اصلی' }]
                 ], resize_keyboard: true
             }
         };
@@ -1202,7 +1186,7 @@ bot.on('message', async (msg) => {
     else if (isAdmin && text === '⚙️ تنظیم قیمت دلاری تون') {
         adminData.waitingForAdminTonUsd = true;
         saveDatabase();
-        await safeSendMessage(chatId, `لطفاً قیمت دلاری جدید تون را وارد کنید (فقط عدد، مثلاً \`1.31\`):`);
+        await safeSendMessage(chatId, `لطفاً قیمت دلاری جدید تون را وارد کنید (فقط عدد، مثلاً \`5.7\`):`);
     }
     else if (isAdmin && text === '⚙️ تنظیم قیمت دلاری استارز') {
         adminData.waitingForAdminStarUsd = true;
@@ -1300,6 +1284,8 @@ bot.on('message', async (msg) => {
         const tonFlowMsg = 
             `[ خرید ارز تون ]\n\n` +
             ` با خرید ارز تون، می‌توانید ارز تون را مستقیماً به آدرس ولت خود دریافت کنید!\n\n` +
+            ` نرخ تتر لایو: ${tonData.usdtToman.toLocaleString()} تومان\n` +
+            ` قیمت دلاری تون: $${tonData.tonUsd}\n` +
             ` قیمت نهایی هر تون: ${tonData.finalPrice.toLocaleString()} تومان (با احتساب سود زنده)\n` +
             ` حداقل خرید : 0.1 تون\n\n` +
             ` لطفاً تعداد تون مورد نظر خود را وارد کنید:\n` +
@@ -1644,6 +1630,14 @@ bot.on('callback_query', async (callbackQuery) => {
 
     if (action === 'support_direct') {
         await safeSendMessage(chatId, `ارتباط مستقیم با ادمین:\n${ADMIN_ID_USERNAME}`);
+        try { await bot.answerCallbackQuery(callbackQuery.id); } catch(e){}
+        return;
+    }
+
+    if (action === 'support_ticket') {
+        userData.waitingForTicket = true;
+        saveDatabase();
+        await safeSendMessage(chatId, `لطفا پیام خود را برای ارسال به پشتیبانی بنویسید:`);
         try { await bot.answerCallbackQuery(callbackQuery.id); } catch(e){}
         return;
     }
