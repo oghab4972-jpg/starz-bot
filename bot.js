@@ -248,18 +248,19 @@ async function showStarInvoice(chatId, userData) {
     saveDatabase();
 
     const invoiceMsg = 
-        ` اطلاعات سفارش شما به شرح زیر می باشد\n\n` +
-        `🛒 پلن انتخابی : ${userData.starCount} استارز تلگرام ⭐\n\n` +
-        `👤 برای یوزرنیم : @${userData.starRecipient}\n\n` +
-        `💎 مبلغ ${totalPrice.toLocaleString()} تومان\n\n` +
-        `🖤 در صورتیکه اطلاعات بالا صحیح می‌باشد سفارش خود را تایید کنید:`;
+        `📑 فاکتور خرید استارز\n\n` +
+        `💫 مقدار خرید: ${userData.starCount}\n` +
+        `🔗 یوزر دریافت‌کننده: @${userData.starRecipient}\n\n` +
+        `💰 مبلغ فاکتور: ${totalPrice.toLocaleString()} تومان\n` +
+        `💳 مبلغ نهایی: ${totalPrice.toLocaleString()} تومان\n\n` +
+        `🔮 در صورتی که جزئیات بالا مورد تأیید شماست ✓ \nروی دکمه «تأیید ✅» کلیک کنید.`;
 
     const invoiceKeyboard = {
         reply_markup: {
             keyboard: [
-                [{ text: '🎁 نکنه کد تخفیف داری؟', style: 'primary' }],
-                [{ text: 'تایید سفارش', style: 'success' }],
-                [{ text: '🔙 برگشت', style: 'danger' }]
+                [{ text: 'تأیید ✅', style: 'success' }, { text: 'لغو خرید ❌', style: 'danger' }],
+                [{ text: '🎁 اعمال تخفیف', style: 'primary' }, { text: '💳 اعمال کد تخفیف', style: 'primary' }],
+                [{ text: '🔙 بازگشت به پکیج‌ها', style: 'danger' }, { text: '🏠 منوی اصلی', style: 'danger' }]
             ],
             resize_keyboard: true
         }
@@ -695,10 +696,12 @@ bot.on('message', async (msg) => {
         userData.currentShopState = 'star_recipient';
         saveDatabase();
 
+        const selfName = msg.from.first_name || 'کاربر';
         const recipientKeyboard = {
             reply_markup: {
                 keyboard: [
                     [{ text: '💙 خودم', style: 'success' }],
+                    [{ text: `✅ برای خودم ( ${selfName} )`, style: 'success' }],
                     [{ text: '🔙 بازگشت', style: 'danger' }]
                 ],
                 resize_keyboard: true
@@ -877,22 +880,7 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if (text === '🎁 نکنه کد تخفیف داری؟' && userData.currentShopState === 'star_invoice') {
-        userData.waitingForDiscountInput = true;
-        saveDatabase();
-        const discountPromptKeyboard = {
-            reply_markup: {
-                keyboard: [
-                    [{ text: '🔙 بازگشت', style: 'danger' }]
-                ],
-                resize_keyboard: true
-            }
-        };
-        await safeSendMessage(chatId, '💎 لطفاً کد تخفیف خود را وارد کنید:', discountPromptKeyboard);
-        return;
-    }
-
-    if (text === 'تایید سفارش' && userData.currentShopState === 'star_invoice') {
+    if (text === 'تأیید ✅' && userData.currentShopState === 'star_invoice') {
         const trackingCode = 'STR-' + Math.floor(10000 + Math.random() * 90000);
         const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
 
@@ -910,7 +898,7 @@ bot.on('message', async (msg) => {
         };
         saveDatabase();
 
-        const userConfirmMsg = `سفارش شما با موفقیت ثبت شد و در صف پردازش قرار گرفت!\n\nکد پیگیری: \`${trackingCode}\`\nمقدار: ${userData.starCount} استارز\nمبلغ نهایی: ${userData.lastAmount.toLocaleString()} تومان`;
+        const userConfirmMsg = `سفارش شما با این فاکتور ثبت و منتظر واریزی هستیم\n\nکد پیگیری: \`${trackingCode}\`\nمقدار: ${userData.starCount} استارز\nمبلغ نهایی: ${userData.lastAmount.toLocaleString()} تومان`;
         await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
 
         const adminOrderMsg = `[ سفارش جدید خرید استارز ]\n\nکاربر: ${userData.firstName} (${chatId})\nکد پیگیری: \`${trackingCode}\`\nمقدار: ${userData.starCount} استارز\nیوزر دریافت‌کننده: @${userData.starRecipient}\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
@@ -928,6 +916,13 @@ bot.on('message', async (msg) => {
         await safeSendMessage(ADMIN_NUMERIC_ID, adminOrderMsg, adminOrderMarkup);
         userData.currentShopState = null;
         saveDatabase();
+        return;
+    }
+
+    if (text === 'لغو خرید ❌' && userData.currentShopState === 'star_invoice') {
+        userData.currentShopState = null;
+        saveDatabase();
+        await safeSendMessage(chatId, 'خرید شما لغو شد.', mainKeyboard);
         return;
     }
 
@@ -1104,10 +1099,10 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    // هندلر دکمه «💙 خودم» یا ارسال آیدی گیرنده استارز
-    if (text && (text === '💙 خودم' || userData.waitingForStarRecipient)) {
+    // هندلر دکمه «💙 خودم» یا «برای خودم» یا ارسال آیدی گیرنده استارز
+    if (text && (text === '💙 خودم' || text.startsWith('✅ برای خودم') || userData.waitingForStarRecipient)) {
         let usernameInput = text.trim();
-        if (usernameInput === '💙 خودم') {
+        if (usernameInput === '💙 خودم' || usernameInput.startsWith('✅ برای خودم')) {
             usernameInput = msg.from.username || msg.from.first_name || 'کاربر';
         }
         if (usernameInput.startsWith('@')) {
