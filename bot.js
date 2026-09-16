@@ -4,7 +4,7 @@ const fs = require('fs');
 const https = require('https');
 const path = require('path');
 
-// راه‌اندازی وب‌سرور و مینی‌اپ برای رندر
+// راه‌اندازی وب‌سرور و مینی‌اپ برای رندر (اصلاح شده برای نمایش صحیح مینی‌اپ)
 const app = express();
 const PORT = process.env.PORT || 10000;
 
