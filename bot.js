@@ -1,26 +1,6 @@
 const TelegramModule = require('node-telegram-bot-api');
-const express = require('express');
 const fs = require('fs');
 const https = require('https');
-const path = require('path');
-
-const app = express();
-const PORT = process.env.PORT || 10000;
-
-// اتصال دقیق پوشه public برای اجرای صحیح مینی‌اپ
-app.use(express.static(path.join(__dirname, 'public')));
-
-// اگر کسی آدرس اصلی را باز کرد، فایل index.html مینی‌اپ فرستاده شود نه متن ساده
-app.get('/', (req, res) => {َ
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/health', (req, res) => res.send('StarzPlus Bot and Mini App are running live!'));
-
-app.listen(PORT, () => {
-    console.log(`Web server & Mini App are running on port ${PORT}`);
-});
-
 
 const TelegramBot = typeof TelegramModule === 'function' 
     ? TelegramModule 
@@ -33,9 +13,9 @@ const DB_FILE = './database.json';
 
 const bot = new TelegramBot(TOKEN, { 
     polling: { 
-        interval: 30, 
+        interval: 10, 
         autoStart: true,
-        params: { timeout: 1 }
+        params: { timeout: 0 }
     }, 
     filepath: false 
 });
@@ -45,7 +25,6 @@ process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled
 
 let db = { users: {}, orders: {}, discountCodes: {} };
 
-const TON_USD = 5.5;
 const STAR_USD = 0.015;
 
 function loadDatabase() {
@@ -98,10 +77,9 @@ function getUserDataById(userId) {
             waitingForReactionLink: false,
             waitingForStarCount: false,
             waitingForStarRecipient: false,
-            waitingForCustomStarInput: false,
             starCount: 50,
             starRecipient: '',
-            starPricePerUnit: 3798,
+            starPricePerUnit: 0,
             reactionCount: 5,
             reactionLink: '',
             lastAmount: 0,
@@ -183,16 +161,40 @@ async function getUsdtToToman() {
     });
 }
 
+async function getBinanceTonPriceUsd() {
+    return new Promise((resolve) => {
+        https.get('https://api.binance.com/api/v3/ticker/price?symbol=TONUSDT', { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    const parsed = JSON.parse(data);
+                    if (parsed && parsed.price) {
+                        resolve(parseFloat(parsed.price));
+                    } else {
+                        resolve(5.5);
+                    }
+                } catch (e) {
+                    resolve(5.5);
+                }
+            });
+        }).on('error', () => {
+            resolve(5.5);
+        });
+    });
+}
+
 async function fetchTonData() {
     const usdtToman = await getUsdtToToman();
-    const tonToman = TON_USD * usdtToman;
+    const tonUsd = await getBinanceTonPriceUsd();
+    const tonToman = tonUsd * usdtToman;
     const finalPrice = Math.round(tonToman + 20000);
-    return { tonUsd: TON_USD.toFixed(2), finalPrice, usdtToman };
+    return { tonUsd: tonUsd.toFixed(2), finalPrice, usdtToman };
 }
 
 async function fetchStarsPrice() {
     const usdtToman = await getUsdtToToman();
-    const starToman = (STAR_USD * usdtToman) + 300;
+    const starToman = (STAR_USD * usdtToman) + 1000;
     return Math.round(starToman);
 }
 
@@ -248,23 +250,29 @@ function getAccountKeyboard() {
 }
 
 async function showStarInvoice(chatId, userData) {
-    const unitPrice = userData.starPricePerUnit || 3798; 
+    const unitPrice = userData.starPricePerUnit || 3800; 
     let totalPrice = unitPrice * userData.starCount;
 
+    let discountVal = 0;
     if (userData.appliedDiscountPercent > 0) {
-        const discountVal = Math.round(totalPrice * (userData.appliedDiscountPercent / 100));
-        totalPrice = Math.max(0, totalPrice - discountVal);
+        const codeObj = db.discountCodes[userData.appliedDiscountCode];
+        if (!codeObj || codeObj.restriction === 'stars' || codeObj.restriction === null) {
+            discountVal = Math.round(totalPrice * (userData.appliedDiscountPercent / 100));
+        }
     }
-    userData.lastAmount = totalPrice;
+    const finalAmount = Math.max(0, totalPrice - discountVal);
+    userData.lastAmount = finalAmount;
     saveDatabase();
 
     const invoiceMsg = 
-        `📑 فاکتور خرید استارز\n\n` +
-        `💫 مقدار خرید: ${userData.starCount}\n` +
-        `🔗 یوزر دریافت‌کننده: @${userData.starRecipient}\n\n` +
-        `💰 مبلغ فاکتور: ${totalPrice.toLocaleString()} تومان\n` +
-        `💳 مبلغ نهایی: ${totalPrice.toLocaleString()} تومان\n\n` +
-        `🔮 در صورتی که جزئیات بالا مورد تأیید شماست ✓ \nروی دکمه «تأیید ✅» کلیک کنید.`;
+        `فاکتور خرید استارز\n\n` +
+        `مقدار خرید: ${userData.starCount}\n` +
+        `یوزر دریافت‌کننده: @${userData.starRecipient}\n\n` +
+        `مبلغ فاکتور: ${totalPrice.toLocaleString()} تومان\n` +
+        `کل موجودی تخفیف: ${userData.discountWallet.toLocaleString()} تومان\n\n` +
+        `حداکثر تخفیف قابل اعمال: ${userData.discountWallet.toLocaleString()} تومان\n\n` +
+        `مبلغ نهایی: ${finalAmount.toLocaleString()} تومان\n\n` +
+        `در صورتی که جزئیات بالا مورد تأیید شماست ✓\nروی دکمه «تأیید ✅» کلیک کنید.`;
 
     const invoiceKeyboard = {
         reply_markup: {
@@ -283,12 +291,15 @@ async function showStarInvoice(chatId, userData) {
 async function showGiftInvoice(chatId, userData) {
     const unitPrice = userData.selectedGiftStars * 3900; 
     const totalPrice = unitPrice * userData.giftCount;
-    let currentAmount = totalPrice;
+    let discountVal = 0;
 
     if (userData.appliedDiscountPercent > 0) {
-        const discountVal = Math.round(totalPrice * (userData.appliedDiscountPercent / 100));
-        currentAmount = totalPrice - discountVal;
+        const codeObj = db.discountCodes[userData.appliedDiscountCode];
+        if (!codeObj || codeObj.restriction === 'gift_stars' || codeObj.restriction === null) {
+            discountVal = Math.round(totalPrice * (userData.appliedDiscountPercent / 100));
+        }
     }
+    const currentAmount = Math.max(0, totalPrice - discountVal);
     userData.lastAmount = currentAmount;
     saveDatabase();
 
@@ -345,20 +356,14 @@ async function showTonInvoice(chatId, userData) {
 
 async function showReactionInvoice(chatId, userData) {
     const totalPrice = userData.reactionCount * userData.starPricePerUnit;
-    let currentAmount = totalPrice;
-
-    if (userData.appliedDiscountPercent > 0) {
-        const discountVal = Math.round(totalPrice * (userData.appliedDiscountPercent / 100));
-        currentAmount = totalPrice - discountVal;
-    }
-    userData.lastAmount = currentAmount;
+    userData.lastAmount = totalPrice;
     saveDatabase();
 
     const invoiceMsg = 
         `[ فاکتور ری‌اکشن استارزی ]\n\n` +
         `مقدار خرید: ${userData.reactionCount} استارز\n` +
         `لینک پست: \`${userData.reactionLink}\`\n\n` +
-        `مبلغ نهایی: ${currentAmount.toLocaleString()} تومان\n\n` +
+        `مبلغ نهایی: ${totalPrice.toLocaleString()} تومان\n\n` +
         `در صورتی که جزئیات بالا مورد تأیید شماست ، روی دکمه «تأیید» کلیک کنید.`;
 
     const invoiceKeyboard = {
@@ -410,7 +415,6 @@ bot.on('message', async (msg) => {
         userData.waitingForReactionLink = false;
         userData.waitingForStarCount = false;
         userData.waitingForStarRecipient = false;
-        userData.waitingForCustomStarInput = false;
         
         if (isAdmin) { 
             adminData.adminAction = null; 
@@ -428,7 +432,7 @@ bot.on('message', async (msg) => {
             return;
         }
 
-        if (text === '🔙 بازگشت به پکیج‌ها' || userData.currentShopState === 'star_recipient' || userData.currentShopState === 'star_invoice' || userData.currentShopState === 'star_custom_input' || userData.currentShopState === 'star_menu') {
+        if (text === '🔙 بازگشت به پکیج‌ها' || userData.currentShopState === 'star_recipient' || userData.currentShopState === 'star_invoice' || userData.currentShopState === 'star_menu') {
             userData.currentShopState = 'star_menu';
             userData.waitingForStarCount = true;
             saveDatabase();
@@ -436,14 +440,21 @@ bot.on('message', async (msg) => {
             userData.starPricePerUnit = starPrice;
             saveDatabase();
 
-            const maxBuyableStars = Math.floor(userData.wallet / starPrice);
             const starMsg = 
-                `💎 لطفاً تعداد استارز مورد نیاز خود را از 50 الی 100000 عدد ارسال نمایید\n\n` +
-                `❗ با توجه به موجودی شما می‌توانید حداکثر ${maxBuyableStars} استار خریداری کنید`;
+                `✨ وقت درخشیدن با استارز تلگرام !\n\n` +
+                `📌 کاربردهای استارز :\n` +
+                `✨ فعال‌سازی ری‌اکشن‌های استارز در چت‌ها\n` +
+                `🎁 خرید یا تمدید اکانت پرمیوم تلگرام\n` +
+                `💸 پرداخت هزینه تبلیغات تلگرام و تبلیغ کانال یا ربات خود\n` +
+                `％ استفاده در خریدهای درون‌برنامه‌ای و مینی‌اپ‌ها\n\n` +
+                `✍️ سفارش‌های استارز در کمتر از ۲ دقیقه انجام میشن ، با پشتیبانی کامل و لحظه‌ای!\n\n` +
+                `📊 حداقل خرید : 50 استارز\n\n` +
+                `🔢 لطفاً تعداد استارز مورد نظر خود را ارسال کنید:`;
             
             const starMenuKeyboard = {
                 reply_markup: {
                     keyboard: [
+                        [{ text: 'محاسبه با موجودی من', style: 'success' }],
                         [{ text: '🔙 بازگشت', style: 'danger' }]
                     ],
                     resize_keyboard: true
@@ -524,7 +535,7 @@ bot.on('message', async (msg) => {
             adminData.waitingForDiscountPercent = false;
             adminData.waitingForDiscountCapacity = true;
             saveDatabase();
-            await safeSendMessage(chatId, 'ظرفیت این کد (تعداد دفعات قابل استفاده کل، مثلاً 5 نفر) را وارد کنید:');
+            await safeSendMessage(chatId, 'ظرفیت این کد (تعداد دفعات قابل استفاده کل) را وارد کنید:');
             return;
         }
 
@@ -538,7 +549,7 @@ bot.on('message', async (msg) => {
             adminData.waitingForDiscountCapacity = false;
             adminData.waitingForDiscountExpiry = true;
             saveDatabase();
-            await safeSendMessage(chatId, 'ساعت اتمام اعتبار کد به وقت تهران را وارد کنید (مثلاً برای ساعت 10 شب عدد 22 را بفرستید):');
+            await safeSendMessage(chatId, 'ساعت اتمام اعتبار کد به وقت تهران را وارد کنید (عدد 0 تا 23):');
             return;
         }
 
@@ -556,23 +567,25 @@ bot.on('message', async (msg) => {
             const restrictionKeyboard = {
                 reply_markup: {
                     keyboard: [
-                        [{ text: '🌐 بدون محدودیت', style: 'primary' }, { text: '🎁 فقط گیفت‌های استارزی', style: 'success' }],
+                        [{ text: '🌐 بدون محدودیت', style: 'primary' }, { text: '⭐ محدودیت برای استارز', style: 'success' }],
+                        [{ text: '💠 محدودیت برای تون', style: 'success' }, { text: '💫 محدودیت برای ری‌اکشن', style: 'success' }],
+                        [{ text: '🎁 محدودیت برای گیفت‌ها', style: 'success' }],
                         [{ text: '🔙 بازگشت', style: 'danger' }]
                     ],
                     resize_keyboard: true
                 }
             };
-            await safeSendMessage(chatId, 'لطفاً نوع اعمال محدودیت روی خریدها را انتخاب کنید:', restrictionKeyboard);
+            await safeSendMessage(chatId, 'لطفاً نوع محدودیت کد تخفیف را انتخاب کنید:', restrictionKeyboard);
             return;
         }
 
         if (adminData.waitingForDiscountRestriction && text) {
             adminData.waitingForDiscountRestriction = false;
-            if (text === '🎁 فقط گیفت‌های استارزی') {
-                adminData.tempDiscount.restriction = 'gift_stars';
-            } else {
-                adminData.tempDiscount.restriction = null;
-            }
+            if (text === '⭐ محدودیت برای استارز') adminData.tempDiscount.restriction = 'stars';
+            else if (text === '💠 محدودیت برای تون') adminData.tempDiscount.restriction = 'ton';
+            else if (text === '💫 محدودیت برای ری‌اکشن') adminData.tempDiscount.restriction = 'reaction';
+            else if (text === '🎁 محدودیت برای گیفت‌ها') adminData.tempDiscount.restriction = 'gift_stars';
+            else adminData.tempDiscount.restriction = null;
 
             const code = 'STARZ-' + Math.floor(1000 + Math.random() * 9000);
             db.discountCodes[code] = {
@@ -600,7 +613,7 @@ bot.on('message', async (msg) => {
                 `کد تخفیف ساخته شد\n\n` +
                 `کد: \`${code}\`\n` +
                 `درصد تخفیف: ${adminData.tempDiscount.percent}%\n` +
-                `ظرفیت: ${adminData.tempDiscount.capacity} نفر`, 
+                `محدودیت: ${adminData.tempDiscount.restriction || 'بدون محدودیت'}`, 
                 adminPanelMarkup
             );
             return;
@@ -629,7 +642,6 @@ bot.on('message', async (msg) => {
                 targetUser.isBanned = true;
                 saveDatabase();
                 await safeSendMessage(chatId, `کاربر \`${targetId}\` بن شد.`);
-                await safeSendMessage(targetId, `از طرف مدیریت شما بن شدید.`);
                 adminData.adminAction = null;
                 adminData.targetUserId = null;
                 return;
@@ -637,7 +649,6 @@ bot.on('message', async (msg) => {
                 targetUser.isBanned = false;
                 saveDatabase();
                 await safeSendMessage(chatId, `کاربر \`${targetId}\` آنبن شد.`);
-                await safeSendMessage(targetId, `از طرف مدیریت شما آنبن شدید و حساب شما فعال شد.`);
                 adminData.adminAction = null;
                 adminData.targetUserId = null;
                 return;
@@ -646,7 +657,6 @@ bot.on('message', async (msg) => {
                 targetUser.level = 'سطح 2';
                 saveDatabase();
                 await safeSendMessage(chatId, `احراز هویت و حساب کاربری \`${targetId}\` تایید شد.`);
-                await safeSendMessage(targetId, `تبریک! احراز هویت و حساب کاربری شما توسط مدیریت تایید شد.`);
                 adminData.adminAction = null;
                 adminData.targetUserId = null;
                 return;
@@ -694,16 +704,21 @@ bot.on('message', async (msg) => {
         }
     }
 
-    if (userData.waitingForStarCount && text && /^\d+$/.test(text)) {
+    if (userData.waitingForStarCount && text) {
+        if (text === 'محاسبه با موجودی من') {
+            const maxStars = Math.floor(userData.wallet / (userData.starPricePerUnit || 3800));
+            await safeSendMessage(chatId, `موجودی شما: ${userData.wallet.toLocaleString()} تومان\nحداکثر می‌توانید ${maxStars} استارز بخرید.\nلطفاً تعداد را ارسال کنید:`, backKeyboard);
+            return;
+        }
+
         const countInput = parseInt(text);
-        if (countInput < 50 || countInput > 100000) {
+        if (isNaN(countInput) || countInput < 50 || countInput > 100000) {
             await safeSendMessage(chatId, '❌ تعداد استارز باید عددی بین ۵۰ تا ۱۰۰,۰۰۰ باشد:', backKeyboard);
             return;
         }
 
         userData.starCount = countInput;
         userData.waitingForStarCount = false;
-        userData.waitingForStarRecipient = true;
         userData.currentShopState = 'star_recipient';
         saveDatabase();
 
@@ -711,23 +726,41 @@ bot.on('message', async (msg) => {
         const recipientKeyboard = {
             reply_markup: {
                 keyboard: [
-                    [{ text: '💙 خودم', style: 'success' }],
-                    [{ text: `✅ برای خودم ( ${selfName} )`, style: 'success' }],
+                    [{ text: `برای خودم ( ${selfName} )`, style: 'success' }],
                     [{ text: '🔙 بازگشت', style: 'danger' }]
                 ],
                 resize_keyboard: true
             }
         };
-        const recipientMsg = `آیدی اکانتی که میخواهید ${userData.starCount} استارز واریز بشه رو ارسال کنید\n[ User@ ] را ارسال کنید:`;
+        const recipientMsg = 
+            `انتخاب اکانت دریافت‌کننده\n\n` +
+            `اگر قصد خرید برای اکانت خودتان را دارید ، روی دکمه «برای خودم» کلیک کنید.\n\n` +
+            `اگر قصد خرید برای شخص دیگری را دارید ، یوزرنیم ( آیدی ) تلگرام او را بدون علامت @ ارسال کنید.\n\n` +
+            `✅ Pedarfarsi\n❌ @Pedarfarsi`;
+        
         await safeSendMessage(chatId, recipientMsg, recipientKeyboard);
+        return;
+    }
+
+    if (userData.currentShopState === 'star_recipient' && text) {
+        let usernameInput = text.trim();
+        if (usernameInput.startsWith('برای خودم')) {
+            usernameInput = msg.from.username || msg.from.first_name || 'کاربر';
+        }
+        if (usernameInput.startsWith('@')) usernameInput = usernameInput.substring(1);
+
+        userData.starRecipient = usernameInput;
+        userData.currentShopState = 'star_invoice';
+        saveDatabase();
+
+        await showStarInvoice(chatId, userData);
         return;
     }
 
     if (userData.waitingForTonAmount && text) {
         if (text === 'محاسبه با موجودی من') {
             const balanceTon = (userData.wallet / userData.tonPricePerUnit).toFixed(2);
-            const checkMsg = `موجودی اصلی شما: ${userData.wallet.toLocaleString()} تومان\nمعادل حدود ${balanceTon} تون می‌توانید خریداری کنید.\nلطفاً تعداد تون مورد نظر را وارد کنید:`;
-            await safeSendMessage(chatId, checkMsg, backKeyboard);
+            await safeSendMessage(chatId, `موجودی شما: ${userData.wallet.toLocaleString()} تومان\nمعادل حدود ${balanceTon} تون می‌توانید خریداری کنید.\nلطفاً تعداد تون را وارد کنید:`, backKeyboard);
             return;
         }
 
@@ -741,12 +774,17 @@ bot.on('message', async (msg) => {
         userData.waitingForTonWallet = true;
         saveDatabase();
 
-        const walletPromptMsg = `[ آدرس ولت تون ( TON ) ]\n\nلطفاً آدرس ولت تون خود را ارسال کنید:`;
-        await safeSendMessage(chatId, walletPromptMsg, backKeyboard);
+        await safeSendMessage(chatId, `[ آدرس ولت تون ( TON ) ]\n\nلطفاً آدرس ولت تون خود را ارسال کنید:`, backKeyboard);
         return;
     }
 
     if (userData.waitingForReactionCount && text) {
+        if (text === 'محاسبه با موجودی من') {
+            const maxR = Math.floor(userData.wallet / userData.starPricePerUnit);
+            await safeSendMessage(chatId, `موجودی شما: ${userData.wallet.toLocaleString()} تومان\nحداکثر ${maxR} استارز می‌توانید ری‌اکشن بزنید.\nلطفاً تعداد را ارسال کنید:`, backKeyboard);
+            return;
+        }
+
         const countInput = parseInt(text);
         if (isNaN(countInput) || countInput < 5) {
             await safeSendMessage(chatId, '❌ حداقل خرید ۵ استارز است:', backKeyboard);
@@ -754,12 +792,10 @@ bot.on('message', async (msg) => {
         }
         userData.reactionCount = countInput;
         userData.waitingForReactionCount = false;
-        userData.waitingForReactionLink = true;
         userData.currentShopState = 'reaction_input_link';
         saveDatabase();
 
-        const linkPromptMsg = `🔗 لطفا لینک پست تلگرام را ارسال کنید:`;
-        await safeSendMessage(chatId, linkPromptMsg, backKeyboard);
+        await safeSendMessage(chatId, `🔗 لطفاً لینک پست تلگرام را ارسال کنید:`, backKeyboard);
         return;
     }
 
@@ -778,8 +814,7 @@ bot.on('message', async (msg) => {
     }
 
     if (userData.waitingForTonWallet && text) {
-        const address = text.trim();
-        userData.tonWalletAddress = address;
+        userData.tonWalletAddress = text.trim();
         userData.waitingForTonWallet = false;
         userData.waitingForTonMemoChoice = true;
         saveDatabase();
@@ -851,17 +886,6 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if (userData.waitingForRecipient && text) {
-        userData.waitingForRecipient = false;
-        let usernameInput = text.trim();
-        if (usernameInput.startsWith('@')) usernameInput = usernameInput.substring(1);
-        userData.recipientUsername = usernameInput;
-        userData.currentShopState = 'gift_invoice';
-        saveDatabase();
-        await showGiftInvoice(chatId, userData);
-        return;
-    }
-
     if (userData.waitingForDiscountInput && text) {
         userData.waitingForDiscountInput = false;
         saveDatabase();
@@ -879,15 +903,10 @@ bot.on('message', async (msg) => {
 
         await safeSendMessage(chatId, `کد تخفیف ${discountObj.percent}% با موفقیت روی فاکتور شما اعمال شد!`, backKeyboard);
         
-        if (userData.currentShopState === 'gift_invoice') {
-            await showGiftInvoice(chatId, userData);
-        } else if (userData.currentShopState === 'star_invoice') {
-            await showStarInvoice(chatId, userData);
-        } else if (userData.currentShopState === 'ton_invoice') {
-            await showTonInvoice(chatId, userData);
-        } else if (userData.currentShopState === 'reaction_invoice') {
-            await showReactionInvoice(chatId, userData);
-        }
+        if (userData.currentShopState === 'gift_invoice') await showGiftInvoice(chatId, userData);
+        else if (userData.currentShopState === 'star_invoice') await showStarInvoice(chatId, userData);
+        else if (userData.currentShopState === 'ton_invoice') await showTonInvoice(chatId, userData);
+        else if (userData.currentShopState === 'reaction_invoice') await showReactionInvoice(chatId, userData);
         return;
     }
 
@@ -1060,7 +1079,6 @@ bot.on('message', async (msg) => {
         saveDatabase();
         
         const amount = userData.lastAmount;
-
         const adminCaption = `[ رسید پرداخت جدید ]\n\nنام کاربر: ${userData.firstName}\nآیدی عددی: \`${chatId}\`\nمبلغ: ${amount.toLocaleString()} تومان`;
         const adminMarkup = {
             inline_keyboard: [
@@ -1078,11 +1096,7 @@ bot.on('message', async (msg) => {
             ]
         };
         
-        const receiptMsg = 
-            `✅ رسید شما با موفقیت دریافت شد !\n\n` +
-            `💰 پس از تأیید رسید شما توسط مدیریت ، سفارش به‌صورت خودکار ثبت و پردازش می‌شود.\n\n` +
-            `⚠️ اگر تأیید رسید شما بیش از زمان معمول به طول انجامید ، برای پیگیری سریع‌تر روی دکمه 💬 «پیگیری رسید» کلیک کنید و با پشتیبانی در ارتباط باشید.`;
-        
+        const receiptMsg = `✅ رسید شما با موفقیت دریافت شد !\n\n💰 پس از تأیید رسید شما توسط مدیریت ، سفارش به‌صورت خودکار ثبت و پردازش می‌شود.`;
         await safeSendMessage(chatId, receiptMsg, { reply_markup: userMarkup });
         return;
     }
@@ -1107,24 +1121,6 @@ bot.on('message', async (msg) => {
         const adminTicketMsg = `تیکت جدید:\nنام: ${userData.firstName}\nآیدی: \`${chatId}\`\nمتن:\n${text}`;
         const replyMarkup = { reply_markup: { inline_keyboard: [[{ text: '💬 پاسخ به کاربر', callback_data: `reply_${chatId}` }]] } };
         await safeSendMessage(ADMIN_NUMERIC_ID, adminTicketMsg, replyMarkup);
-        return;
-    }
-
-    if (text && (text === '💙 خودم' || text.startsWith('✅ برای خودم') || userData.waitingForStarRecipient)) {
-        let usernameInput = text.trim();
-        if (usernameInput === '💙 خودم' || usernameInput.startsWith('✅ برای خودم')) {
-            usernameInput = msg.from.username || msg.from.first_name || 'کاربر';
-        }
-        if (usernameInput.startsWith('@')) {
-            usernameInput = usernameInput.substring(1);
-        }
-
-        userData.waitingForStarRecipient = false;
-        userData.starRecipient = usernameInput;
-        userData.currentShopState = 'star_invoice';
-        saveDatabase();
-
-        await showStarInvoice(chatId, userData);
         return;
     }
 
@@ -1172,14 +1168,21 @@ bot.on('message', async (msg) => {
         userData.starPricePerUnit = starsPrice;
         saveDatabase();
 
-        const maxBuyableStars = Math.floor(userData.wallet / starsPrice);
         const starMsg = 
-            `💎 لطفاً تعداد استارز مورد نیاز خود را از 50 الی 100000 عدد ارسال نمایید\n\n` +
-            `❗ با توجه به موجودی شما می‌توانید حداکثر ${maxBuyableStars} استار خریداری کنید`;
+            `✨ وقت درخشیدن با استارز تلگرام !\n\n` +
+            `📌 کاربردهای استارز :\n` +
+            `✨ فعال‌سازی ری‌اکشن‌های استارز در چت‌ها\n` +
+            `🎁 خرید یا تمدید اکانت پرمیوم تلگرام\n` +
+            `💸 پرداخت هزینه تبلیغات تلگرام و تبلیغ کانال یا ربات خود\n` +
+            `％ استفاده در خریدهای درون‌برنامه‌ای و مینی‌اپ‌ها\n\n` +
+            `✍️ سفارش‌های استارز در کمتر از ۲ دقیقه انجام میشن ، با پشتیبانی کامل و لحظه‌ای!\n\n` +
+            `📊 حداقل خرید : 50 استارز\n\n` +
+            `🔢 لطفاً تعداد استارز مورد نظر خود را ارسال کنید:`;
 
         const starMenuKeyboard = {
             reply_markup: {
                 keyboard: [
+                    [{ text: 'محاسبه با موجودی من', style: 'success' }],
                     [{ text: '🔙 بازگشت', style: 'danger' }]
                 ],
                 resize_keyboard: true
@@ -1203,7 +1206,7 @@ bot.on('message', async (msg) => {
                 resize_keyboard: true
             }
         };
-        await safeSendMessage(chatId, `لطفاً تعداد ری‌اکشن استارزی موردنظر خود را ارسال کنید 👇`, reactionMenuKeyboard);
+        await safeSendMessage(chatId, `• لطفاً تعداد ری‌اکشن استارزی موردنظر خود را ارسال کنید 👇`, reactionMenuKeyboard);
     }
     else if (text === '💠 خرید ارز تون ( GRAM )') {
         userData.currentShopState = 'ton_wallet_flow';
@@ -1319,8 +1322,7 @@ bot.on('message', async (msg) => {
             userData.currentShopState = 'gift_recipient';
             saveDatabase();
             const selfName = msg.from.first_name || 'کاربر';
-            const selfUsername = msg.from.username || selfName;
-            userData.recipientUsername = selfUsername;
+            userData.recipientUsername = msg.from.username || selfName;
             saveDatabase();
 
             const recipientKeyboard = {
@@ -1333,13 +1335,12 @@ bot.on('message', async (msg) => {
                 }
             };
             
-            const recipientMsg = `انتخاب اکانت دریافت‌کننده\n\nاگر قصد خرید برای اکانت خودتان را دارید، روی دکمه «برای خودم» کلیک کنید.\n\nاگر قصد خرید برای شخص دیگری را دارید، یوزرنیم ( آیدی ) تلگرام او را بدون علامت @ ارسال کنید.\n\n✅ Pedarfarsi\n❌ @Pedarfarsi`;
+            const recipientMsg = `انتخاب اکانت دریافت‌کننده\n\nاگر قصد خرید برای اکانت خودتان را دارید، روی دکمه «برای خودم» کلیک کنید.\n\nاگر قصد خرید برای شخص دیگری را دارید، یوزرنیم ( آیدی ) تلگرام او را بدون علامت @ ارسال کنید.`;
             await safeSendMessage(chatId, recipientMsg, recipientKeyboard);
         }
     }
     else if (text && text.startsWith('برای خودم')) {
-        const selfUsername = msg.from.username || msg.from.first_name;
-        userData.recipientUsername = selfUsername;
+        userData.recipientUsername = msg.from.username || msg.from.first_name;
         userData.currentShopState = 'gift_invoice';
         saveDatabase();
         await showGiftInvoice(chatId, userData);
@@ -1357,9 +1358,7 @@ bot.on('message', async (msg) => {
     else if (text === '🔒 هاید گیفت' || text === '🔓 لغو هاید') {
         userData.isHided = !userData.isHided;
         saveDatabase();
-        if (userData.currentShopState === 'gift_invoice') {
-            await showGiftInvoice(chatId, userData);
-        }
+        if (userData.currentShopState === 'gift_invoice') await showGiftInvoice(chatId, userData);
     }
     else if (text === '❤️ چه طور میتوانم به شما اعتماد کنم' || text === '❤️ چطور میتوانم به شما اعتماد کنم') {
         const trustMsg = `استارزپلاس با دارا بودن نماد اعتماد و رضایت هزاران مشتری فعال در خدمت شماست.\n\nکانال اعتماد مشتریان:\n@snt_shopp`;
@@ -1385,11 +1384,6 @@ bot.on('message', async (msg) => {
     }
     else if (userData.waitingForAmount && /^\d+$/.test(text)) {
         const enteredAmount = parseInt(text);
-        if (enteredAmount > 500000 && !userData.cardVerified) {
-            await safeSendMessage(chatId, '❌ خطا: کاربران تاییدنشده نمی‌توانند روزانه بیش از ۵۰۰ هزار تومان افزایش موجودی بزنند. لطفاً جهت احراز هویت با پشتیبانی در ارتباط باشید.', backKeyboard);
-            return;
-        }
-
         userData.waitingForAmount = false;
         userData.lastAmount = enteredAmount;
         userData.waitingForReceipt = true;
@@ -1540,7 +1534,7 @@ bot.on('callback_query', async (callbackQuery) => {
 
     if (action === 'support_direct') {
         await safeSendMessage(chatId, `ارتباط مستقیم:\n${ADMIN_ID_USERNAME}`);
-        try { await bot.answerCallbackQuery(callbackQuery.id); } catch(e){}
+        try { await bot.answerCallbackQuery(callbackQuery.id);} catch(e){}
         return;
     }
 
