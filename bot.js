@@ -138,6 +138,18 @@ async function safeSendMessage(chatId, text, options = {}) {
     }
 }
 
+async function setReaction(chatId, messageId, emoji = '⚡') {
+    try {
+        if (bot.setMessageReaction) {
+            await bot.setMessageReaction(chatId, messageId, {
+                reaction: [{ type: 'emoji', emoji: emoji }]
+            });
+        }
+    } catch (err) {
+        // ری‌اکشن اختیاری است و در صورت عدم پشتیبانی خطا نادیده گرفته می‌شود
+    }
+}
+
 async function getUsdtToToman() {
     return new Promise((resolve) => {
         https.get('https://api.wallex.ir/v1/markets', { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
@@ -216,10 +228,12 @@ function getShopKeyboard() {
         reply_markup: {
             keyboard: [
                 [{ text: '📦 سفارش های اخیر من', style: 'primary' }],
-                [{ text: '⭐ استارز تلگرام (Telegram Stars)', style: 'success' }],
-                [{ text: '💠 خرید ارز تون ( GRAM )', style: 'success' }],
-                [{ text: '🎁 گیفت‌های استارزی', style: 'success' }, { text: '💫 ری اکشن استارزی', style: 'success' }],
-                [{ text: '🔙 بازگشت', style: 'danger' }]
+                [{ text: '⭐️ استارز', style: 'success' }, { text: '💎 پرمیوم', style: 'primary' }],
+                [{ text: '💠 خرید ارز تون', style: 'success' }],
+                [{ text: '🎁 گیفت استارزی', style: 'success' }, { text: '✨ بوست تلگرام', style: 'primary' }],
+                [{ text: '🔴 خرید ارز ترون (TRX)', style: 'danger' }],
+                [{ text: '💫 ری اکشن استارزی', style: 'success' }, { text: '🎉 گیواوی استارزی', style: 'primary' }],
+                [{ text: 'برگشت ↩️', style: 'danger' }]
             ],
             resize_keyboard: true
         }
@@ -230,7 +244,7 @@ function getBackKeyboard() {
     return {
         reply_markup: {
             keyboard: [
-                [{ text: '🔙 بازگشت', style: 'danger' }]
+                [{ text: 'برگشت ↩️', style: 'danger' }]
             ],
             resize_keyboard: true
         }
@@ -242,7 +256,7 @@ function getAccountKeyboard() {
         reply_markup: {
             keyboard: [
                 [{ text: '📦 سفارش های معلق من', style: 'primary' }, { text: '📦 سفارش های اخیر من', style: 'primary' }],
-                [{ text: '🔙 بازگشت', style: 'danger' }]
+                [{ text: 'برگشت ↩️', style: 'danger' }]
             ],
             resize_keyboard: true
         }
@@ -250,7 +264,7 @@ function getAccountKeyboard() {
 }
 
 async function showStarInvoice(chatId, userData) {
-    const unitPrice = userData.starPricePerUnit || 3800; 
+    const unitPrice = userData.starPricePerUnit || 3865; 
     let totalPrice = unitPrice * userData.starCount;
 
     let discountVal = 0;
@@ -267,20 +281,20 @@ async function showStarInvoice(chatId, userData) {
     saveDatabase();
 
     const invoiceMsg = 
-        `فاكتور خرید استارز\n\n` +
-        `مقدار خرید: ${userData.starCount}\n` +
-        `یوزر دریافت‌کننده: @${userData.starRecipient}\n\n` +
-        `مبلغ فاکتور: ${totalPrice.toLocaleString()} تومان\n` +
-        `کل موجودی تخفیف: ${availableDiscountWallet.toLocaleString()} تومان\n\n` +
-        `حداکثر تخفیف قابل اعمال: ${availableDiscountWallet.toLocaleString()} تومان\n\n` +
-        `مبلغ نهایی: ${finalAmount.toLocaleString()} تومان\n\n` +
-        `در صورتی که جزئیات بالا مورد تأیید شماست ✓\nروی دکمه «تأیید ✅» کلیک کنید.`;
+        `فاکتور خرید استارز\n\n` +
+        `💫 مقدار خرید: ${userData.starCount}\n` +
+        `👤 یوزر دریافت‌کننده: @${userData.starRecipient}\n\n` +
+        `💰 مبلغ فاکتور: ${totalPrice.toLocaleString()} تومان\n` +
+        `🎁 کل موجودی تخفیف: ${availableDiscountWallet.toLocaleString()} تومان\n\n` +
+        `💡 حداکثر تخفیف قابل اعمال: ${availableDiscountWallet.toLocaleString()} تومان\n\n` +
+        `🩵 مبلغ نهایی: ${finalAmount.toLocaleString()} تومان\n\n` +
+        `💼 در صورتی که جزئیات بالا مورد تأیید شماست ✓\nروی دکمه «تأیید ✅» کلیک کنید.`;
 
     const invoiceKeyboard = {
         reply_markup: {
             keyboard: [
                 [{ text: 'تأیید ✅', style: 'success' }, { text: 'لغو خرید ❌', style: 'danger' }],
-                [{ text: '🎁 اعمال تخفیف', style: 'primary' }, { text: '💳 اعمال کد تخفیف', style: 'primary' }],
+                [{ text: 'اعمال تخفیف 🎁', style: 'primary' }, { text: 'اعمال کد تخفیف 🎫', style: 'primary' }],
                 [{ text: '🔙 بازگشت به پکیج‌ها', style: 'danger' }, { text: '🏠 منوی اصلی', style: 'danger' }]
             ],
             resize_keyboard: true
@@ -320,7 +334,7 @@ async function showGiftInvoice(chatId, userData) {
                 [{ text: '✅ تایید', style: 'success' }, { text: '❌ لغو خرید', style: 'danger' }],
                 [{ text: '💳 اعمال کد تخفیف', style: 'primary' }],
                 [{ text: '💬 تنظیم کامنت', style: 'primary' }, { text: userData.isHided ? '🔓 لغو هاید' : '🔒 هاید گیفت', style: 'primary' }],
-                [{ text: '🔙 بازگشت', style: 'danger' }]
+                [{ text: 'برگشت ↩️', style: 'danger' }]
             ],
             resize_keyboard: true
         }
@@ -347,7 +361,7 @@ async function showTonInvoice(chatId, userData) {
             keyboard: [
                 [{ text: '✅ تایید تون', style: 'success' }, { text: '❌ لغو خرید', style: 'danger' }],
                 [{ text: '💳 اعمال کد تخفیف', style: 'primary' }],
-                [{ text: '🔙 بازگشت', style: 'danger' }]
+                [{ text: 'برگشت ↩️', style: 'danger' }]
             ],
             resize_keyboard: true
         }
@@ -373,7 +387,7 @@ async function showReactionInvoice(chatId, userData) {
             keyboard: [
                 [{ text: '✅ تایید ری‌اکشن', style: 'success' }, { text: '❌ لغو خرید', style: 'danger' }],
                 [{ text: '💳 اعمال کد تخفیف', style: 'primary' }],
-                [{ text: '🔙 بازگشت', style: 'danger' }]
+                [{ text: 'برگشت ↩️', style: 'danger' }]
             ],
             resize_keyboard: true
         }
@@ -388,6 +402,11 @@ bot.on('message', async (msg) => {
     const contact = msg.contact;
     const photo = msg.photo;
     
+    // ارسال ری‌اکشن به پیام کاربر
+    if (msg.message_id) {
+        setReaction(chatId, msg.message_id, '👍');
+    }
+
     const adminData = getUserDataById(ADMIN_NUMERIC_ID);
     const isAdmin = (chatId.toString() === ADMIN_NUMERIC_ID.toString());
     const userData = getUserData(msg);
@@ -401,7 +420,7 @@ bot.on('message', async (msg) => {
     const backKeyboard = getBackKeyboard();
     const accountKeyboard = getAccountKeyboard();
 
-    if (text === '🔙 بازگشت' || text === '🔙 برگشت' || text === '🏠 منوی اصلی' || text === 'انصراف' || text === '↶ برگشت') {
+    if (text === '🔙 بازگشت' || text === 'برگشت ↩️' || text === '🔙 برگشت' || text === '🏠 منوی اصلی' || text === 'انصراف' || text === '↶ برگشت') {
         userData.waitingForAmount = false;
         userData.waitingForTicket = false;
         userData.waitingForReceipt = false;
@@ -443,21 +462,21 @@ bot.on('message', async (msg) => {
             saveDatabase();
 
             const starMsg = 
-                `✨ وقت درخشیدن با استارز تلگرام !\n\n` +
-                `📌 کاربردهای استارز :\n` +
+                `💥 وقت درخشیدن با استارز تلگرامه !\n\n` +
+                `🎯 کاربردهای استارز :\n\n` +
                 `✨ فعال‌سازی ری‌اکشن‌های استارز در چت‌ها\n` +
-                `🎁 خرید یا تمدید اکانت پرمیوم تلگرام\n` +
-                `💸 پرداخت هزینه تبلیغات تلگرام و تبلیغ کانال یا ربات خود\n` +
-                `％ استفاده در خریدهای درون‌برنامه‌ای و مینی‌اپ‌ها\n\n` +
+                `🎯 خرید یا تمدید اکانت پرمیوم تلگرام\n` +
+                `💸 پرداخت هزینه تبلیغات تلگرام و تبلیغ کانال یا ربات خود\n\n` +
+                `٪ استفاده در خریدهای درون‌برنامه‌ای و مینی‌اپ‌ها\n\n` +
                 `✍️ سفارش‌های استارز در کمتر از ۲ دقیقه انجام میشن ، با پشتیبانی کامل و لحظه‌ای!\n\n` +
                 `📊 حداقل خرید : 50 استارز\n\n` +
-                `🔢 لطفاً تعداد استارز مورد نظر خود را ارسال کنید:`;
+                `🪐 لطفاً تعداد استارز مورد نظر خود را ارسال کنید:`;
             
             const starMenuKeyboard = {
                 reply_markup: {
                     keyboard: [
-                        [{ text: 'محاسبه با موجودی من', style: 'success' }],
-                        [{ text: '🔙 بازگشت', style: 'danger' }]
+                        [{ text: 'محاسبه با موجودی من 🔄', style: 'success' }],
+                        [{ text: 'برگشت ↩️', style: 'danger' }]
                     ],
                     resize_keyboard: true
                 }
@@ -476,8 +495,8 @@ bot.on('message', async (msg) => {
             const reactKeyboard = {
                 reply_markup: {
                     keyboard: [
-                        [{ text: 'محاسبه با موجودی من', style: 'success' }],
-                        [{ text: '🔙 بازگشت', style: 'danger' }]
+                        [{ text: 'محاسبه با موجودی من 🔄', style: 'success' }],
+                        [{ text: 'برگشت ↩️', style: 'danger' }]
                     ],
                     resize_keyboard: true
                 }
@@ -487,7 +506,7 @@ bot.on('message', async (msg) => {
         } else if (userData.currentShopState === 'ton_wallet_flow' || userData.currentShopState === 'ton_invoice' || userData.currentShopState === 'gift_category' || userData.currentShopState === 'reaction_menu') {
             userData.currentShopState = 'main_shop';
             saveDatabase();
-            await safeSendMessage(chatId, 'سرویس مورد نظر خود را انتخاب کنید :', getShopKeyboard());
+            await safeSendMessage(chatId, 'وقته محصول رو انتخاب کنی !\n\n🚀 تمامی سفارشات با بالاترین سرعت و همراه با پشتیبانی کامل انجام میشن تا تجربه‌ای مطمئن و بی‌دغدغه داشته باشی !\n\n🫶 از لیست زیر ، گزینه مورد نظرت رو انتخاب کن :', getShopKeyboard());
             return;
         } else {
             userData.currentShopState = null;
@@ -572,7 +591,7 @@ bot.on('message', async (msg) => {
                         [{ text: '🌐 بدون محدودیت', style: 'primary' }, { text: '⭐ محدودیت برای استارز', style: 'success' }],
                         [{ text: '💠 محدودیت برای تون', style: 'success' }, { text: '💫 محدودیت برای ری‌اکشن', style: 'success' }],
                         [{ text: '🎁 محدودیت برای گیفت‌ها', style: 'success' }],
-                        [{ text: '🔙 بازگشت', style: 'danger' }]
+                        [{ text: 'برگشت ↩️', style: 'danger' }]
                     ],
                     resize_keyboard: true
                 }
@@ -706,13 +725,7 @@ bot.on('message', async (msg) => {
         }
     }
 
-    if (userData.waitingForStarCount && text) {
-        if (text === 'محاسبه با موجودی من') {
-            const maxStars = Math.floor(userData.wallet / (userData.starPricePerUnit || 3800));
-            await safeSendMessage(chatId, `موجودی شما: ${userData.wallet.toLocaleString()} تومان\nحداکثر می‌توانید ${maxStars} استارز بخرید.\nلطفاً تعداد را ارسال کنید:`, backKeyboard);
-            return;
-        }
-
+    if (userData.waitingForStarCount && text && text !== 'محاسبه با موجودی من 🔄') {
         const countInput = parseInt(text);
         if (isNaN(countInput) || countInput < 50 || countInput > 100000) {
             await safeSendMessage(chatId, '❌ تعداد استارز باید عددی بین ۵۰ تا ۱۰۰,۰۰۰ باشد:', backKeyboard);
@@ -728,17 +741,17 @@ bot.on('message', async (msg) => {
         const recipientKeyboard = {
             reply_markup: {
                 keyboard: [
-                    [{ text: `برای خودم ( ${selfName} )`, style: 'success' }],
-                    [{ text: '🔙 بازگشت', style: 'danger' }]
+                    [{ text: `برای خودم ( ${selfName} ) 🪪`, style: 'success' }],
+                    [{ text: 'برگشت ↩️', style: 'danger' }]
                 ],
                 resize_keyboard: true
             }
         };
         const recipientMsg = 
-            `انتخاب اکانت دریافت‌کننده\n\n` +
-            `اگر قصد خرید برای اکانت خودتان را دارید ، روی دکمه «برای خودم» کلیک کنید.\n\n` +
-            `اگر قصد خرید برای شخص دیگری را دارید ، یوزرنیم ( آیدی ) تلگرام او را بدون علامت @ ارسال کنید.\n\n` +
-            `✅ Pedarfarsi\n❌ @Pedarfarsi`;
+            `🔗 انتخاب اکانت دریافت‌کننده\n\n` +
+            `✔️ اگر قصد خرید برای اکانت خودتان را دارید ، روی دکمه «برای خودم» کلیک کنید.\n\n` +
+            `✔️ اگر قصد خرید برای شخص دیگری را دارید ، یوزرنیم ( آیدی ) تلگرام او را بدون علامت @ ارسال کنید.\n\n` +
+            `✔️ Pedarfarsi\n❌ @Pedarfarsi`;
         
         await safeSendMessage(chatId, recipientMsg, recipientKeyboard);
         return;
@@ -746,7 +759,7 @@ bot.on('message', async (msg) => {
 
     if (userData.currentShopState === 'star_recipient' && text) {
         let usernameInput = text.trim();
-        if (usernameInput.startsWith('برای خودم')) {
+        if (usernameInput.includes('برای خودم')) {
             usernameInput = msg.from.username || msg.from.first_name || 'کاربر';
         }
         if (usernameInput.startsWith('@')) usernameInput = usernameInput.substring(1);
@@ -760,7 +773,7 @@ bot.on('message', async (msg) => {
     }
 
     if (userData.waitingForTonAmount && text) {
-        if (text === 'محاسبه با موجودی من') {
+        if (text === 'محاسبه با موجودی من 🔄') {
             const balanceTon = (userData.wallet / userData.tonPricePerUnit).toFixed(2);
             await safeSendMessage(chatId, `موجودی شما: ${userData.wallet.toLocaleString()} تومان\nمعادل حدود ${balanceTon} تون می‌توانید خریداری کنید.\nلطفاً تعداد تون را وارد کنید:`, backKeyboard);
             return;
@@ -781,7 +794,7 @@ bot.on('message', async (msg) => {
     }
 
     if (userData.waitingForReactionCount && text) {
-        if (text === 'محاسبه با موجودی من') {
+        if (text === 'محاسبه با موجودی من 🔄') {
             const maxR = Math.floor(userData.wallet / userData.starPricePerUnit);
             await safeSendMessage(chatId, `موجودی شما: ${userData.wallet.toLocaleString()} تومان\nحداکثر ${maxR} استارز می‌توانید ری‌اکشن بزنید.\nلطفاً تعداد را ارسال کنید:`, backKeyboard);
             return;
@@ -825,7 +838,7 @@ bot.on('message', async (msg) => {
             reply_markup: {
                 keyboard: [
                     [{ text: '💬 بله، کامنت دارم', style: 'success' }, { text: '❌ رد کردن', style: 'danger' }],
-                    [{ text: '🔙 بازگشت', style: 'danger' }]
+                    [{ text: 'برگشت ↩️', style: 'danger' }]
                 ],
                 resize_keyboard: true
             }
@@ -909,6 +922,29 @@ bot.on('message', async (msg) => {
         else if (userData.currentShopState === 'star_invoice') await showStarInvoice(chatId, userData);
         else if (userData.currentShopState === 'ton_invoice') await showTonInvoice(chatId, userData);
         else if (userData.currentShopState === 'reaction_invoice') await showReactionInvoice(chatId, userData);
+        return;
+    }
+
+    if (text === 'محاسبه با موجودی من 🔄' && userData.currentShopState === 'star_menu') {
+        const maxStars = Math.floor(userData.wallet / (userData.starPricePerUnit || 3865));
+        await safeSendMessage(chatId, `موجودی شما: ${userData.wallet.toLocaleString()} تومان\nحداکثر می‌توانید ${maxStars} استارز بخرید.\nلطفاً تعداد را ارسال کنید:`, backKeyboard);
+        return;
+    }
+
+    if (text === 'اعمال تخفیف 🎁' && userData.currentShopState === 'star_invoice') {
+        const availableDiscountWallet = userData.discountWallet || 1766;
+        if (availableDiscountWallet <= 0) {
+            await safeSendMessage(chatId, 'موجودی کیف پول تخفیف شما کافی نیست.', backKeyboard);
+        } else {
+            await safeSendMessage(chatId, `تخفیف به مبلغ ${availableDiscountWallet.toLocaleString()} تومان روی فاکتور شما اعمال گردید.`);
+        }
+        return;
+    }
+
+    if (text === 'اعمال کد تخفیف 🎫' && userData.currentShopState === 'star_invoice') {
+        userData.waitingForDiscountInput = true;
+        saveDatabase();
+        await safeSendMessage(chatId, 'لطفاً کد تخفیف خود را ارسال کنید:', backKeyboard);
         return;
     }
 
@@ -1161,9 +1197,9 @@ bot.on('message', async (msg) => {
     else if (text === '🛒 خرید محصول') {
         userData.currentShopState = 'main_shop';
         saveDatabase();
-        await safeSendMessage(chatId, 'خدمات مورد نظر خود را انتخاب کنید :', getShopKeyboard());
+        await safeSendMessage(chatId, 'وقته محصول رو انتخاب کنی !\n\n🚀 تمامی سفارشات با بالاترین سرعت و همراه با پشتیبانی کامل انجام میشن تا تجربه‌ای مطمئن و بی‌دغدغه داشته باشی !\n\n🫶 از لیست زیر ، گزینه مورد نظرت رو انتخاب کن :', getShopKeyboard());
     }
-    else if (text === '⭐ استارز تلگرام (Telegram Stars)') {
+    else if (text === '⭐️ استارز' || text === '⭐ استارز تلگرام (Telegram Stars)') {
         userData.currentShopState = 'star_menu';
         userData.waitingForStarCount = true;
         const starsPrice = await fetchStarsPrice();
@@ -1171,21 +1207,21 @@ bot.on('message', async (msg) => {
         saveDatabase();
 
         const starMsg = 
-            `✨ وقت درخشیدن با استارز تلگرام !\n\n` +
-            `📌 کاربردهای استارز :\n` +
+            `💥 وقت درخشیدن با استارز تلگرامه !\n\n` +
+            `🎯 کاربردهای استارز :\n\n` +
             `✨ فعال‌سازی ری‌اکشن‌های استارز در چت‌ها\n` +
-            `🎁 خرید یا تمدید اکانت پرمیوم تلگرام\n` +
-            `💸 پرداخت هزینه تبلیغات تلگرام و تبلیغ کانال یا ربات خود\n` +
-            `％ استفاده در خریدهای درون‌برنامه‌ای و مینی‌اپ‌ها\n\n` +
+            `🎯 خرید یا تمدید اکانت پرمیوم تلگرام\n` +
+            `💸 پرداخت هزینه تبلیغات تلگرام و تبلیغ کانال یا ربات خود\n\n` +
+            `٪ استفاده در خریدهای درون‌برنامه‌ای و مینی‌اپ‌ها\n\n` +
             `✍️ سفارش‌های استارز در کمتر از ۲ دقیقه انجام میشن ، با پشتیبانی کامل و لحظه‌ای!\n\n` +
             `📊 حداقل خرید : 50 استارز\n\n` +
-            `🔢 لطفاً تعداد استارز مورد نظر خود را ارسال کنید:`;
+            `🪐 لطفاً تعداد استارز مورد نظر خود را ارسال کنید:`;
 
         const starMenuKeyboard = {
             reply_markup: {
                 keyboard: [
-                    [{ text: 'محاسبه با موجودی من', style: 'success' }],
-                    [{ text: '🔙 بازگشت', style: 'danger' }]
+                    [{ text: 'محاسبه با موجودی من 🔄', style: 'success' }],
+                    [{ text: 'برگشت ↩️', style: 'danger' }]
                 ],
                 resize_keyboard: true
             }
@@ -1202,15 +1238,15 @@ bot.on('message', async (msg) => {
         const reactionMenuKeyboard = {
             reply_markup: {
                 keyboard: [
-                    [{ text: 'محاسبه با موجودی من', style: 'success' }],
-                    [{ text: '🔙 بازگشت', style: 'danger' }]
+                    [{ text: 'محاسبه با موجودی من 🔄', style: 'success' }],
+                    [{ text: 'برگشت ↩️', style: 'danger' }]
                 ],
                 resize_keyboard: true
             }
         };
         await safeSendMessage(chatId, `• لطفاً تعداد ری‌اکشن استارزی موردنظر خود را ارسال کنید 👇`, reactionMenuKeyboard);
     }
-    else if (text === '💠 خرید ارز تون ( GRAM )') {
+    else if (text === '💠 خرید ارز تون' || text === '💠 خرید ارز تون ( GRAM )') {
         userData.currentShopState = 'ton_wallet_flow';
         saveDatabase();
         const tonData = await fetchTonData();
@@ -1220,8 +1256,8 @@ bot.on('message', async (msg) => {
         const tonWalletFlowKeyboard = {
             reply_markup: {
                 keyboard: [
-                    [{ text: 'محاسبه با موجودی من', style: 'success' }],
-                    [{ text: '🔙 بازگشت', style: 'danger' }]
+                    [{ text: 'محاسبه با موجودی من 🔄', style: 'success' }],
+                    [{ text: 'برگشت ↩️', style: 'danger' }]
                 ],
                 resize_keyboard: true
             }
@@ -1230,14 +1266,14 @@ bot.on('message', async (msg) => {
         userData.waitingForTonAmount = true;
         saveDatabase();
     }
-    else if (text === '🎁 گیفت‌های استارزی') {
+    else if (text === '🎁 گیفت استارزی' || text === '🎁 گیفت‌های استارزی') {
         userData.currentShopState = 'gift_category';
         saveDatabase();
         const giftCategoryKeyboard = {
             reply_markup: {
                 keyboard: [
                     [{ text: '🧸 گیفت های عادی', style: 'success' }],
-                    [{ text: '🔙 بازگشت', style: 'danger' }]
+                    [{ text: 'برگشت ↩️', style: 'danger' }]
                 ],
                 resize_keyboard: true
             }
@@ -1255,7 +1291,7 @@ bot.on('message', async (msg) => {
                     [{ text: '🎂 گیفت کیک (50)', style: 'success' }, { text: '🌷 گیفت گل (50)', style: 'success' }],
                     [{ text: '🍾 گیفت بطری (50)', style: 'success' }, { text: '🚀 گیفت سفینه (50)', style: 'success' }],
                     [{ text: '🏆 گیفت جام (100)', style: 'success' }, { text: '💍 گیفت حلقه (100)', style: 'success' }],
-                    [{ text: '🔙 بازگشت', style: 'danger' }]
+                    [{ text: 'برگشت ↩️', style: 'danger' }]
                 ],
                 resize_keyboard: true
             }
@@ -1278,7 +1314,7 @@ bot.on('message', async (msg) => {
                 keyboard: [
                     [{ text: '🔻 کم کردن', style: 'danger' }, { text: '📊 تعداد', style: 'primary' }, { text: '🟢 اضافه کردن', style: 'success' }],
                     [{ text: '➖', style: 'danger' }, { text: `${userData.giftCount}`, style: 'primary' }, { text: '➕', style: 'success' }],
-                    [{ text: '🔙 بازگشت', style: 'danger' }, { text: '✅ ادامه', style: 'success' }]
+                    [{ text: 'برگشت ↩️', style: 'danger' }, { text: '✅ ادامه', style: 'success' }]
                 ],
                 resize_keyboard: true
             }
@@ -1294,7 +1330,7 @@ bot.on('message', async (msg) => {
                     keyboard: [
                         [{ text: '🔻 کم کردن', style: 'danger' }, { text: '📊 تعداد', style: 'primary' }, { text: '🟢 اضافه کردن', style: 'success' }],
                         [{ text: '➖', style: 'danger' }, { text: `${userData.giftCount}`, style: 'primary' }, { text: '➕', style: 'success' }],
-                        [{ text: '🔙 بازگشت', style: 'danger' }, { text: '✅ ادامه', style: 'success' }]
+                        [{ text: 'برگشت ↩️', style: 'danger' }, { text: '✅ ادامه', style: 'success' }]
                     ],
                     resize_keyboard: true
                 }
@@ -1311,7 +1347,7 @@ bot.on('message', async (msg) => {
                     keyboard: [
                         [{ text: '🔻 کم کردن', style: 'danger' }, { text: '📊 تعداد', style: 'primary' }, { text: '🟢 اضافه کردن', style: 'success' }],
                         [{ text: '➖', style: 'danger' }, { text: `${userData.giftCount}`, style: 'primary' }, { text: '➕', style: 'success' }],
-                        [{ text: '🔙 بازگشت', style: 'danger' }, { text: '✅ ادامه', style: 'success' }]
+                        [{ text: 'برگشت ↩️', style: 'danger' }, { text: '✅ ادامه', style: 'success' }]
                     ],
                     resize_keyboard: true
                 }
@@ -1330,8 +1366,8 @@ bot.on('message', async (msg) => {
             const recipientKeyboard = {
                 reply_markup: {
                     keyboard: [
-                        [{ text: `برای خودم ( ${selfName} )`, style: 'success' }],
-                        [{ text: '🔙 بازگشت', style: 'danger' }]
+                        [{ text: `برای خودم ( ${selfName} ) 🪪`, style: 'success' }],
+                        [{ text: 'برگشت ↩️', style: 'danger' }]
                     ],
                     resize_keyboard: true
                 }
@@ -1395,7 +1431,7 @@ bot.on('message', async (msg) => {
         const paymentKeyboard = {
             reply_markup: {
                 inline_keyboard: [[{ text: '🏷️ اعمال کد تخفیف', callback_data: 'apply_discount_prompt' }]],
-                keyboard: [[{ text: '🔙 بازگشت', style: 'danger' }]], 
+                keyboard: [[{ text: 'برگشت ↩️', style: 'danger' }]], 
                 resize_keyboard: true 
             }
         };
@@ -1411,7 +1447,7 @@ bot.on('message', async (msg) => {
         saveDatabase();
         await safeSendMessage(chatId, `لطفا پیام خود را ارسال کنید:`, backKeyboard);
     }
-    else if (text === '📦 سفارش های اخیر من') {
+    else if (text === '📦 سفارش های اخیر من' || text === 'سفارش های اخیر من 📥') {
         let userOrders = Object.entries(db.orders).filter(([code, order]) => order.userId === chatId);
         if (userOrders.length === 0) {
             await safeSendMessage(chatId, 'شما سفارشی ثبت نکرده‌اید.', backKeyboard);
