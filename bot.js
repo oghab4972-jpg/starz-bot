@@ -6,7 +6,7 @@ const http = require('http');
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('StarzPlus Bot is running live with Premium Emoji Buttons & Live API!\n');
+    res.end('StarzPlus Bot is running live with Custom Emoji Buttons & Live API!\n');
 }).listen(PORT, () => {
     console.log(`Web server is running on port ${PORT}`);
 });
@@ -59,7 +59,7 @@ function saveDatabase() {
 }
 
 loadDatabase();
-console.log('StarzPlus Bot is running with Wallex API & Premium Emoji Buttons!');
+console.log('StarzPlus Bot is running with Wallex API & Custom Emoji Buttons!');
 
 function getUserDataById(userId) {
     if (!db.users[userId]) {
@@ -235,12 +235,12 @@ function getAccountKeyboard() {
     };
 }
 
-// کیبورد تعداد گیفت با ایموجی‌های پرمیوم درخواستی شما
+// کیبورد تعداد گیفت با ایموجی‌های پرمیوم دقیق
 function getGiftCountKeyboard(count) {
     return {
         reply_markup: {
             keyboard: [
-                [{ text: 'کم کردن ➖ [emoji_8750484397]', style: 'danger' }, { text: '📊 تعداد', style: 'primary' }, { text: 'اضافه کردن ➕ [emoji_8750484397]', style: 'success' }],
+                [{ text: 'کم کردن 🔻 [emoji_5924835830676855859]', style: 'danger' }, { text: '📊 تعداد', style: 'primary' }, { text: 'اضافه کردن 🔺 [emoji_5926908229706588313]', style: 'success' }],
                 [{ text: '➖', style: 'danger' }, { text: `${count}`, style: 'primary' }, { text: '➕', style: 'success' }],
                 [{ text: '🔙 بازگشت', style: 'danger' }, { text: '✅ ادامه', style: 'success' }]
             ],
