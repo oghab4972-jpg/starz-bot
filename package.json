@@ -1,11 +1,12 @@
 {
   "name": "starz-bot",
   "version": "1.0.0",
+  "description": "StarzPlus Telegram Bot",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
-    "node-telegram-bot-api": "^0.65.1"
+    "node-telegram-bot-api": "^0.66.0"
   }
 }
