@@ -22,9 +22,9 @@ const DB_FILE = './database.json';
 
 const bot = new TelegramBot(TOKEN, { 
     polling: { 
-        interval: 50, 
+        interval: 30, 
         autoStart: true,
-        params: { timeout: 2 }
+        params: { timeout: 1 }
     }, 
     filepath: false 
 });
@@ -1207,6 +1207,32 @@ bot.on('message', async (msg) => {
         return;
     }
 
+    // هندلر مستقیم برای دکمه «برای خودم» یا ارسال آیدی در مرحله انتخاب دریافت‌کننده استارز یا گیفت
+    if (text && (text.startsWith('برای خودم') || userData.currentShopState === 'star_recipient' || userData.currentShopState === 'gift_recipient')) {
+        let usernameInput = text.trim();
+        if (usernameInput.startsWith('برای خودم')) {
+            usernameInput = msg.from.username || msg.from.first_name || 'کاربر';
+        }
+        if (usernameInput.startsWith('@')) {
+            usernameInput = usernameInput.substring(1);
+        }
+
+        if (userData.currentShopState === 'star_recipient' || userData.waitingForStarRecipient) {
+            userData.waitingForStarRecipient = false;
+            userData.starRecipient = usernameInput;
+            userData.currentShopState = 'star_invoice';
+            saveDatabase();
+            await showStarInvoice(chatId, userData);
+            return;
+        } else if (userData.currentShopState === 'gift_recipient') {
+            userData.recipientUsername = usernameInput;
+            userData.currentShopState = 'gift_invoice';
+            saveDatabase();
+            await showGiftInvoice(chatId, userData);
+            return;
+        }
+    }
+
     if (text && text.startsWith('/start')) {
         userData.currentShopState = null;
         saveDatabase();
@@ -1421,20 +1447,6 @@ bot.on('message', async (msg) => {
             
             const recipientMsg = `انتخاب اکانت دریافت‌کننده\n\nاگر قصد خرید برای اکانت خودتان را دارید، روی دکمه «برای خودم» کلیک کنید.\n\nاگر قصد خرید برای شخص دیگری را دارید، یوزرنیم ( آیدی ) تلگرام او را بدون علامت @ ارسال کنید.\n\n✅ Pedarfarsi\n❌ @Pedarfarsi`;
             await safeSendMessage(chatId, recipientMsg, recipientKeyboard);
-        }
-    }
-    else if (text && text.startsWith('برای خودم')) {
-        const selfUsername = msg.from.username || msg.from.first_name;
-        if (userData.currentShopState === 'star_recipient') {
-            userData.starRecipient = selfUsername;
-            userData.currentShopState = 'star_invoice';
-            saveDatabase();
-            await showStarInvoice(chatId, userData);
-        } else {
-            userData.recipientUsername = selfUsername;
-            userData.currentShopState = 'gift_invoice';
-            saveDatabase();
-            await showGiftInvoice(chatId, userData);
         }
     }
     else if (text === '❌ لغو خرید') {
