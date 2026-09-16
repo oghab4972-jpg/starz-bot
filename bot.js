@@ -1,14 +1,18 @@
 const TelegramModule = require('node-telegram-bot-api');
+const express = require('express');
 const fs = require('fs');
 const https = require('https');
-const http = require('http');
+const path = require('path');
 
+// راه‌اندازی وب‌سرور و مینی‌اپ برای رندر
+const app = express();
 const PORT = process.env.PORT || 10000;
-http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('StarzPlus Bot is running live with Instant High Speed API!\n');
-}).listen(PORT, () => {
-    console.log(`Web server is running on port ${PORT}`);
+
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('/health', (req, res) => res.send('StarzPlus Bot and Mini App are running live!'));
+
+app.listen(PORT, () => {
+    console.log(`Web server & Mini App are running on port ${PORT}`);
 });
 
 const TelegramBot = typeof TelegramModule === 'function' 
@@ -1099,7 +1103,6 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    // هندلر دکمه «💙 خودم» یا «برای خودم» یا ارسال آیدی گیرنده استارز
     if (text && (text === '💙 خودم' || text.startsWith('✅ برای خودم') || userData.waitingForStarRecipient)) {
         let usernameInput = text.trim();
         if (usernameInput === '💙 خودم' || usernameInput.startsWith('✅ برای خودم')) {
