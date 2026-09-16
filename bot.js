@@ -112,19 +112,39 @@ function getUserDataById(userId) {
     }
     return db.users[userId];
 }
-
-function getUserData(msg) {
-    if (!msg.from) return getUserDataById(msg.chat.id);
-    const user = msg.from;
-    const chatId = user.id;
-    const userData = getUserDataById(chatId);
-    if (user.first_name && userData.firstName === 'کاربر') {
-        userData.firstName = user.first_name;
-        saveDatabase();
-    }
-    return userData;
+// تابع دریافت نرخ لایو تتر از API رایگان والکس
+function fetchLiveUsdtRate() {
+    return new Promise((resolve) => {
+        const options = {
+            hostname: 'api.wallex.ir',
+            path: '/v1/markets',
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        };
+        https.get(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    // پیدا کردن قیمت تتر (USDTIRT) از لیست بازارهای والکس
+                    const usdtMarket = json.result.symbols['USDTIRT'];
+                    const usdtToman = parseFloat(usdtMarket.stats.lastPrice);
+                    resolve(usdtToman > 0 ? usdtToman : 230000);
+                } catch (e) {
+                    resolve(230000); // قیمت پیش‌فرض در صورت خطا
+                }
+            });
+        }).on('error', () => {
+            resolve(230000);
+        });
+    });
 }
 
+    
+        
+        
+    
+    
 async function safeSendMessage(chatId, text, options = {}) {
     try {
         return await bot.sendMessage(chatId, text, { parse_mode: 'Markdown', ...options });
