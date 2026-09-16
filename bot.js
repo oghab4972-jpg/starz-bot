@@ -6,7 +6,7 @@ const http = require('http');
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('StarzPlus Bot is running live with Colored Buttons & Live API!\n');
+    res.end('StarzPlus Bot is running live with Premium Emoji Buttons & Live API!\n');
 }).listen(PORT, () => {
     console.log(`Web server is running on port ${PORT}`);
 });
@@ -59,7 +59,7 @@ function saveDatabase() {
 }
 
 loadDatabase();
-console.log('StarzPlus Bot is running with Wallex API & Colored Buttons!');
+console.log('StarzPlus Bot is running with Wallex API & Premium Emoji Buttons!');
 
 function getUserDataById(userId) {
     if (!db.users[userId]) {
@@ -182,7 +182,7 @@ async function fetchStarsPrice() {
     return Math.round(starToman);
 }
 
-// کیبوردهای رنگی سراسری (مشابه تصویر ارسالی)
+// کیبوردهای رنگی سراسری
 function getMainKeyboard(isAdmin) {
     let rows = [
         [{ text: '🛒 خرید محصول', style: 'success' }],
@@ -229,6 +229,20 @@ function getAccountKeyboard() {
             keyboard: [
                 [{ text: '📦 سفارش های معلق من', style: 'primary' }, { text: '📦 سفارش های اخیر من', style: 'primary' }],
                 [{ text: '🔙 بازگشت', style: 'danger' }]
+            ],
+            resize_keyboard: true
+        }
+    };
+}
+
+// کیبورد تعداد گیفت با ایموجی‌های پرمیوم درخواستی شما
+function getGiftCountKeyboard(count) {
+    return {
+        reply_markup: {
+            keyboard: [
+                [{ text: 'کم کردن ➖ [emoji_8750484397]', style: 'danger' }, { text: '📊 تعداد', style: 'primary' }, { text: 'اضافه کردن ➕ [emoji_8750484397]', style: 'success' }],
+                [{ text: '➖', style: 'danger' }, { text: `${count}`, style: 'primary' }, { text: '➕', style: 'success' }],
+                [{ text: '🔙 بازگشت', style: 'danger' }, { text: '✅ ادامه', style: 'success' }]
             ],
             resize_keyboard: true
         }
@@ -438,17 +452,7 @@ bot.on('message', async (msg) => {
         } else if (userData.currentShopState === 'gift_recipient') {
             userData.currentShopState = 'gift_count';
             saveDatabase();
-            const countKeyboard = {
-                reply_markup: {
-                    keyboard: [
-                        [{ text: '🔻 کم کردن', style: 'danger' }, { text: '📊 تعداد', style: 'primary' }, { text: '🟢 اضافه کردن', style: 'success' }],
-                        [{ text: '➖', style: 'danger' }, { text: `${userData.giftCount}`, style: 'primary' }, { text: '➕', style: 'success' }],
-                        [{ text: '🔙 بازگشت', style: 'danger' }, { text: '✅ ادامه', style: 'success' }]
-                    ],
-                    resize_keyboard: true
-                }
-            };
-            await safeSendMessage(chatId, `تعداد انتخاب شده: ${userData.giftCount}`, countKeyboard);
+            await safeSendMessage(chatId, `تعداد انتخاب شده: ${userData.giftCount}`, getGiftCountKeyboard(userData.giftCount));
             return;
         } else if (userData.currentShopState === 'gift_invoice') {
             userData.currentShopState = 'gift_recipient';
@@ -1146,50 +1150,20 @@ bot.on('message', async (msg) => {
         userData.currentShopState = 'gift_count';
         saveDatabase();
 
-        const countKeyboard = {
-            reply_markup: {
-                keyboard: [
-                    [{ text: '🔻 کم کردن', style: 'danger' }, { text: '📊 تعداد', style: 'primary' }, { text: '🟢 اضافه کردن', style: 'success' }],
-                    [{ text: '➖', style: 'danger' }, { text: `${userData.giftCount}`, style: 'primary' }, { text: '➕', style: 'success' }],
-                    [{ text: '🔙 بازگشت', style: 'danger' }, { text: '✅ ادامه', style: 'success' }]
-                ],
-                resize_keyboard: true
-            }
-        };
-        await safeSendMessage(chatId, `تعداد انتخاب شده: ${userData.giftCount}`, countKeyboard);
+        await safeSendMessage(chatId, `تعداد انتخاب شده: ${userData.giftCount}`, getGiftCountKeyboard(userData.giftCount));
     }
-    else if (text === '🟢 اضافه کردن' || text === '➕') {
+    else if (text && (text.includes('اضافه کردن') || text === '➕')) {
         if (userData.currentShopState === 'gift_count') {
             userData.giftCount += 1;
             saveDatabase();
-            const countKeyboard = {
-                reply_markup: {
-                    keyboard: [
-                        [{ text: '🔻 کم کردن', style: 'danger' }, { text: '📊 تعداد', style: 'primary' }, { text: '🟢 اضافه کردن', style: 'success' }],
-                        [{ text: '➖', style: 'danger' }, { text: `${userData.giftCount}`, style: 'primary' }, { text: '➕', style: 'success' }],
-                        [{ text: '🔙 بازگشت', style: 'danger' }, { text: '✅ ادامه', style: 'success' }]
-                    ],
-                    resize_keyboard: true
-                }
-            };
-            await safeSendMessage(chatId, `تعداد انتخاب شده: ${userData.giftCount}`, countKeyboard);
+            await safeSendMessage(chatId, `تعداد انتخاب شده: ${userData.giftCount}`, getGiftCountKeyboard(userData.giftCount));
         }
     }
-    else if (text === '🔻 کم کردن' || text === '➖') {
+    else if (text && (text.includes('کم کردن') || text === '➖')) {
         if (userData.currentShopState === 'gift_count' && userData.giftCount > 1) {
             userData.giftCount -= 1;
             saveDatabase();
-            const countKeyboard = {
-                reply_markup: {
-                    keyboard: [
-                        [{ text: '🔻 کم کردن', style: 'danger' }, { text: '📊 تعداد', style: 'primary' }, { text: '🟢 اضافه کردن', style: 'success' }],
-                        [{ text: '➖', style: 'danger' }, { text: `${userData.giftCount}`, style: 'primary' }, { text: '➕', style: 'success' }],
-                        [{ text: '🔙 بازگشت', style: 'danger' }, { text: '✅ ادامه', style: 'success' }]
-                    ],
-                    resize_keyboard: true
-                }
-            };
-            await safeSendMessage(chatId, `تعداد انتخاب شده: ${userData.giftCount}`, countKeyboard);
+            await safeSendMessage(chatId, `تعداد انتخاب شده: ${userData.giftCount}`, getGiftCountKeyboard(userData.giftCount));
         }
     }
     else if (text === '✅ ادامه') {
