@@ -56,19 +56,13 @@ const STAR_USD = 0.015;
  * Fallback price for USDT to Toman in case Wallex API is unreachable.
  * @constant {number}
  */
-const FALLBACK_USDT_TOMAN = 299891;
+const FALLBACK_USDT_TOMAN = 230444; // Adjusted to match baseline requirements
 
 /**
  * Fallback price for TON to USD in case Binance API is unreachable.
  * @constant {number}
  */
-const FALLBACK_TON_USD = 5.5;
-
-/**
- * Fallback price for TRX to USD in case Binance API is unreachable.
- * @constant {number}
- */
-const FALLBACK_TRX_USD = 0.25;
+const FALLBACK_TON_USD = 1.303; // Base price provided by you
 
 // ============================================================================
 // SYSTEM LOGGING UTILITY (EXPANDED FOR ENTERPRISE TRACING)
@@ -240,14 +234,6 @@ function getUserDataById(userId) {
             waitingForTonMemoChoice: false,
             waitingForTonMemoInput: false,
 
-            // TRX Specific States
-            waitingForTrxAmount: false,
-            waitingForTrxWallet: false,
-
-            // BOOST Specific States
-            waitingForBoostLink: false,
-            waitingForBoostMonths: false,
-
             // Reaction Specific States
             waitingForReactionCount: false,
             waitingForReactionLink: false,
@@ -281,15 +267,6 @@ function getUserDataById(userId) {
             tonPricePerUnit: 0,
             tonWalletAddress: '',
             tonMemo: 'ندارد',
-
-            // TRX Session Variables
-            trxAmount: 0,
-            trxPricePerUnit: 0,
-            trxWalletAddress: '',
-
-            // BOOST Session Variables
-            boostLink: '',
-            boostMonths: 1,
             
             // Administrator Variables
             waitingForAdminUserSearch: false,
@@ -445,9 +422,9 @@ async function getUsdtToToman() {
 
 async function fetchStarsPrice() {
     const rawUsdtToman = await getUsdtToToman();
-    const adjustedUsdtToman = rawUsdtToman + 20000;
-    const starToman = (STAR_USD * adjustedUsdtToman);
-    return Math.round(starToman);
+    const starToman = STAR_USD * rawUsdtToman;
+    // Exactly 8% markup
+    return Math.round(starToman * 1.08);
 }
 
 async function getBinancePriceUsd(symbol) {
@@ -461,34 +438,25 @@ async function getBinancePriceUsd(symbol) {
                     if (parsed && parsed.price) {
                         resolve(parseFloat(parsed.price));
                     } else {
-                        resolve(symbol === 'TRXUSDT' ? FALLBACK_TRX_USD : FALLBACK_TON_USD);
+                        resolve(FALLBACK_TON_USD);
                     }
                 } catch (e) {
-                    resolve(symbol === 'TRXUSDT' ? FALLBACK_TRX_USD : FALLBACK_TON_USD);
+                    resolve(FALLBACK_TON_USD);
                 }
             });
         }).on('error', () => {
-            resolve(symbol === 'TRXUSDT' ? FALLBACK_TRX_USD : FALLBACK_TON_USD);
+            resolve(FALLBACK_TON_USD);
         });
     });
 }
 
 async function fetchTonData() {
     const rawUsdt = await getUsdtToToman();
-    const usdtToman = rawUsdt + 20000;
     const tonUsd = await getBinancePriceUsd('TONUSDT');
-    const tonToman = tonUsd * usdtToman;
-    const finalPrice = Math.round(tonToman + 20000);
-    return { tonUsd: tonUsd.toFixed(2), finalPrice, usdtToman };
-}
-
-async function fetchTrxData() {
-    const rawUsdt = await getUsdtToToman();
-    const usdtToman = rawUsdt + 20000;
-    const trxUsd = await getBinancePriceUsd('TRXUSDT');
-    const trxToman = trxUsd * usdtToman;
-    const finalPrice = Math.round(trxToman + 5000);
-    return { trxUsd: trxUsd.toFixed(4), finalPrice, usdtToman };
+    const tonToman = tonUsd * rawUsdt;
+    // Exactly 8% markup
+    const finalPrice = Math.round(tonToman * 1.08);
+    return { tonUsd: tonUsd.toFixed(2), finalPrice, usdtToman: rawUsdt };
 }
 
 // ============================================================================
@@ -513,10 +481,8 @@ function getShopKeyboard() {
         reply_markup: {
             keyboard: [
                 [{ text: '📦 سفارش های اخیر من' }],
-                [{ text: '⭐️ استارز' }, { text: '✨ بوست تلگرام' }],
-                [{ text: '💠 خرید ارز تون' }, { text: '💠 خرید ارز ترون ( TRX )' }],
-                [{ text: '🎁 گیفت استارزی' }],
-                [{ text: '💫 ری اکشن استارزی' }],
+                [{ text: '⭐️ استارز' }, { text: '💠 خرید ارز تون' }],
+                [{ text: '🎁 گیفت استارزی' }, { text: '💫 ری اکشن استارزی' }],
                 [{ text: 'برگشت ↩️' }]
             ],
             resize_keyboard: true
@@ -550,7 +516,7 @@ function getAccountKeyboard() {
 // ============================================================================
 
 async function showStarInvoice(chatId, userData) {
-    const unitPrice = userData.starPricePerUnit || 3865; 
+    const unitPrice = userData.starPricePerUnit || await fetchStarsPrice(); 
     let totalPrice = unitPrice * userData.starCount;
 
     let discountVal = 0;
@@ -589,37 +555,12 @@ async function showStarInvoice(chatId, userData) {
     await safeSendPhoto(chatId, '1000002626.jpg', { caption: invoiceMsg, reply_markup: invoiceKeyboard.reply_markup });
 }
 
-async function showBoostInvoice(chatId, userData) {
-    const basePricePerMonth = 85000; 
-    const totalPrice = userData.boostMonths * basePricePerMonth;
-    userData.lastAmount = totalPrice;
-    saveDatabase();
-
-    const invoiceMsg = 
-        `<b>[ فاکتور بوست کانال تلگرام ]</b>\n\n` +
-        `مدت زمان: ${userData.boostMonths} ماه\n` +
-        `لینک کانال: <code>${escapeHTML(userData.boostLink)}</code>\n\n` +
-        `مبلغ نهایی: <b>${totalPrice.toLocaleString()} تومان</b>\n\n` +
-        `در صورتی که جزئیات بالا مورد تأیید شماست ، روی دکمه تایید کلیک کنید.`;
-
-    const invoiceKeyboard = {
-        reply_markup: {
-            keyboard: [
-                [{ text: '✅ تایید بوست' }, { text: '❌ لغو خرید' }],
-                [{ text: '💳 اعمال کد تخفیف' }],
-                [{ text: 'برگشت ↩️' }]
-            ],
-            resize_keyboard: true
-        }
-    };
-    await safeSendMessage(chatId, invoiceMsg, invoiceKeyboard);
-}
-
 async function showGiftInvoice(chatId, userData) {
     const rawUsdtToman = await getUsdtToToman();
-    const adjustedUsdtToman = rawUsdtToman + 20000;
     const starziUsdPrice = userData.selectedGiftStars * STAR_USD;
-    const starziTomanPerUnit = starziUsdPrice * adjustedUsdtToman + 1000;
+    const baseGiftToman = starziUsdPrice * rawUsdtToman;
+    // Exactly 8% markup
+    const starziTomanPerUnit = Math.round(baseGiftToman * 1.08); 
     const totalPrice = Math.round(starziTomanPerUnit * userData.giftCount);
     
     let discountVal = 0;
@@ -674,31 +615,6 @@ async function showTonInvoice(chatId, userData) {
         reply_markup: {
             keyboard: [
                 [{ text: '✅ تایید تون' }, { text: '❌ لغو خرید' }],
-                [{ text: '💳 اعمال کد تخفیف' }],
-                [{ text: 'برگشت ↩️' }]
-            ],
-            resize_keyboard: true
-        }
-    };
-    await safeSendMessage(chatId, invoiceMsg, invoiceKeyboard);
-}
-
-async function showTrxInvoice(chatId, userData) {
-    const totalPrice = Math.round(userData.trxAmount * userData.trxPricePerUnit);
-    userData.lastAmount = totalPrice;
-    saveDatabase();
-
-    const invoiceMsg = 
-        `<b>[ فاکتور خرید ارز ترون (TRX) ]</b>\n\n` +
-        `مقدار خرید: ${userData.trxAmount} ترون\n` +
-        `آدرس ولت: <code>${escapeHTML(userData.trxWalletAddress)}</code>\n\n` +
-        `مبلغ نهایی: <b>${totalPrice.toLocaleString()} تومان</b>\n\n` +
-        `در صورتی که جزئیات بالا مورد تأیید شماست ، روی دکمه تایید کلیک کنید.`;
-
-    const invoiceKeyboard = {
-        reply_markup: {
-            keyboard: [
-                [{ text: '✅ تایید ترون' }, { text: '❌ لغو خرید' }],
                 [{ text: '💳 اعمال کد تخفیف' }],
                 [{ text: 'برگشت ↩️' }]
             ],
@@ -778,12 +694,6 @@ bot.on('message', async (msg) => {
         userData.waitingForTonWallet = false;
         userData.waitingForTonMemoChoice = false;
         userData.waitingForTonMemoInput = false;
-
-        userData.waitingForTrxAmount = false;
-        userData.waitingForTrxWallet = false;
-        
-        userData.waitingForBoostLink = false;
-        userData.waitingForBoostMonths = false;
         
         userData.waitingForReactionCount = false;
         userData.waitingForReactionLink = false;
@@ -1080,44 +990,6 @@ bot.on('message', async (msg) => {
     }
 
     // ============================================================================
-    // TELEGRAM BOOST & OTHER FLOWS
-    // ============================================================================
-
-    if (userData.waitingForBoostLink && text) {
-        userData.boostLink = text.trim();
-        userData.waitingForBoostLink = false;
-        userData.waitingForBoostMonths = true;
-        saveDatabase();
-
-        const monthKeyboard = {
-            reply_markup: {
-                keyboard: [
-                    [{ text: '1 ماهه' }, { text: '3 ماهه' }],
-                    [{ text: '6 ماهه' }, { text: '12 ماهه' }],
-                    [{ text: 'برگشت ↩️' }]
-                ],
-                resize_keyboard: true
-            }
-        };
-        await safeSendMessage(chatId, `لطفاً مدت زمان بوست را انتخاب کنید:`, monthKeyboard);
-        return;
-    }
-
-    if (userData.waitingForBoostMonths && text) {
-        let months = 1;
-        if (text.includes('3')) months = 3;
-        if (text.includes('6')) months = 6;
-        if (text.includes('12')) months = 12;
-
-        userData.boostMonths = months;
-        userData.waitingForBoostMonths = false;
-        userData.currentShopState = 'boost_invoice';
-        saveDatabase();
-        await showBoostInvoice(chatId, userData);
-        return;
-    }
-
-    // ============================================================================
     // USER WAITING & INPUT PROCESSORS
     // ============================================================================
 
@@ -1190,27 +1062,6 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if (userData.waitingForTrxAmount && text) {
-        if (text === 'محاسبه با موجودی من 🔄') {
-            const balanceTrx = (userData.wallet / userData.trxPricePerUnit).toFixed(2);
-            await safeSendMessage(chatId, `موجودی شما: ${userData.wallet.toLocaleString()} تومان\nمعادل ${balanceTrx} ترون.\nلطفاً تعداد ترون را وارد کنید:`, backKeyboard);
-            return;
-        }
-
-        const trxInput = parseFloat(text);
-        if (isNaN(trxInput) || trxInput < 1) {
-            await safeSendMessage(chatId, '❌ حداقل خرید ۱ ترون است.', backKeyboard);
-            return;
-        }
-        userData.trxAmount = trxInput;
-        userData.waitingForTrxAmount = false;
-        userData.waitingForTrxWallet = true;
-        saveDatabase();
-
-        await safeSendMessage(chatId, `لطفاً آدرس ولت ترون (TRX) خود را ارسال کنید:`, backKeyboard);
-        return;
-    }
-
     if (userData.waitingForReactionCount && text) {
         if (text === 'محاسبه با موجودی من 🔄') {
             const maxR = Math.floor(userData.wallet / userData.starPricePerUnit);
@@ -1262,15 +1113,6 @@ bot.on('message', async (msg) => {
             }
         };
         await safeSendMessage(chatId, 'آیا برای واریز تون کامنت (ممو) دارید؟', memoKeyboard);
-        return;
-    }
-
-    if (userData.waitingForTrxWallet && text) {
-        userData.trxWalletAddress = text.trim();
-        userData.waitingForTrxWallet = false;
-        userData.currentShopState = 'trx_invoice';
-        saveDatabase();
-        await showTrxInvoice(chatId, userData);
         return;
     }
 
@@ -1348,9 +1190,7 @@ bot.on('message', async (msg) => {
         if (userData.currentShopState === 'gift_invoice') await showGiftInvoice(chatId, userData);
         else if (userData.currentShopState === 'star_invoice') await showStarInvoice(chatId, userData);
         else if (userData.currentShopState === 'ton_invoice') await showTonInvoice(chatId, userData);
-        else if (userData.currentShopState === 'trx_invoice') await showTrxInvoice(chatId, userData);
         else if (userData.currentShopState === 'reaction_invoice') await showReactionInvoice(chatId, userData);
-        else if (userData.currentShopState === 'boost_invoice') await showBoostInvoice(chatId, userData);
         return;
     }
 
@@ -1359,7 +1199,7 @@ bot.on('message', async (msg) => {
     // ============================================================================
 
     if (text === 'محاسبه با موجودی من 🔄' && userData.currentShopState === 'star_menu') {
-        const maxStars = Math.floor(userData.wallet / (userData.starPricePerUnit || 3865));
+        const maxStars = Math.floor(userData.wallet / (userData.starPricePerUnit || await fetchStarsPrice()));
         await safeSendMessage(chatId, `موجودی شما: ${userData.wallet.toLocaleString()} تومان\nحداکثر ${maxStars} استارز می‌توانید بخرید.`, backKeyboard);
         return;
     }
@@ -1374,7 +1214,7 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if (text === 'اعمال کد تخفیف 🎫' && (userData.currentShopState === 'star_invoice' || userData.currentShopState === 'boost_invoice')) {
+    if (text === 'اعمال کد تخفیف 🎫' && userData.currentShopState === 'star_invoice') {
         userData.waitingForDiscountInput = true;
         saveDatabase();
         await safeSendMessage(chatId, 'لطفاً کد تخفیف خود را ارسال کنید:', backKeyboard);
@@ -1426,52 +1266,7 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if (text === '✅ تایید بوست' && userData.currentShopState === 'boost_invoice') {
-        const trackingCode = 'BST-' + Math.floor(10000 + Math.random() * 90000);
-        const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
-
-        db.orders[trackingCode] = {
-            userId: chatId,
-            firstName: userData.firstName,
-            giftName: `بوست تلگرام (${userData.boostMonths} ماهه)`,
-            count: userData.boostMonths,
-            recipient: userData.boostLink,
-            isHided: false,
-            comment: 'ندارد',
-            amount: userData.lastAmount,
-            time: now,
-            status: 'pending'
-        };
-        saveDatabase();
-
-        const userConfirmMsg = `سفارش ثبت شد.\n\nکد پیگیری: <code>${trackingCode}</code>\nمدت: ${userData.boostMonths} ماه\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
-        await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
-
-        const adminOrderMsg = 
-            `<b>[ سفارش جدید بوست ]</b>\n\n` +
-            `👤 نام کاربر: ${escapeHTML(userData.firstName)}\n` +
-            `🆔 آیدی عددی: <code>${chatId}</code>\n` +
-            `🏷️ کد پیگیری: <code>${trackingCode}</code>\n` +
-            `⏳ مدت زمان: ${userData.boostMonths} ماه\n` +
-            `🔗 لینک کانال: <code>${escapeHTML(userData.boostLink)}</code>\n` +
-            `💰 مبلغ کل: ${userData.lastAmount.toLocaleString()} تومان\n` +
-            `⏰ زمان ثبت: ${now}`;
-
-        const adminOrderMarkup = {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '✅ انجام شد', callback_data: `order_done_${trackingCode}` }, { text: '❌ رد شد', callback_data: `order_reject_${trackingCode}` }]
-                ]
-            }
-        };
-
-        await safeSendMessage(ADMIN_NUMERIC_ID, adminOrderMsg, adminOrderMarkup);
-        userData.currentShopState = null;
-        saveDatabase();
-        return;
-    }
-
-    if (text === 'لغو خرید ❌' && (userData.currentShopState === 'star_invoice' || userData.currentShopState === 'boost_invoice')) {
+    if (text === 'لغو خرید ❌' && userData.currentShopState === 'star_invoice') {
         userData.currentShopState = null;
         saveDatabase();
         await safeSendMessage(chatId, 'خرید شما لغو شد.', mainKeyboard);
@@ -1555,51 +1350,6 @@ bot.on('message', async (msg) => {
             `💠 مقدار تون: ${userData.tonAmount}\n` +
             `📫 آدرس ولت: <code>${escapeHTML(userData.tonWalletAddress)}</code>\n` +
             `💬 ممو / کامنت: ${escapeHTML(userData.tonMemo)}\n` +
-            `💰 مبلغ کل: ${userData.lastAmount.toLocaleString()} تومان\n` +
-            `⏰ زمان ثبت: ${now}`;
-
-        const adminOrderMarkup = {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '✅ انجام شد', callback_data: `order_done_${trackingCode}` }, { text: '❌ رد شد', callback_data: `order_reject_${trackingCode}` }]
-                ]
-            }
-        };
-
-        await safeSendMessage(ADMIN_NUMERIC_ID, adminOrderMsg, adminOrderMarkup);
-        userData.currentShopState = null;
-        saveDatabase();
-        return;
-    }
-
-    if (text === '✅ تایید ترون' && userData.currentShopState === 'trx_invoice') {
-        const trackingCode = 'TRX-' + Math.floor(10000 + Math.random() * 90000);
-        const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
-
-        db.orders[trackingCode] = {
-            userId: chatId,
-            firstName: userData.firstName,
-            giftName: `ارز ترون (${userData.trxAmount} TRX)`,
-            count: userData.trxAmount,
-            recipient: userData.trxWalletAddress,
-            isHided: false,
-            comment: 'ندارد',
-            amount: userData.lastAmount,
-            time: now,
-            status: 'pending'
-        };
-        saveDatabase();
-
-        const userConfirmMsg = `سفارش ترون ثبت شد.\n\nکد پیگیری: <code>${trackingCode}</code>`;
-        await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
-
-        const adminOrderMsg = 
-            `<b>[ سفارش جدید ارز ترون (TRX) ]</b>\n\n` +
-            `👤 نام کاربر: ${escapeHTML(userData.firstName)}\n` +
-            `🆔 آیدی عددی: <code>${chatId}</code>\n` +
-            `🏷️ کد پیگیری: <code>${trackingCode}</code>\n` +
-            `💠 مقدار ترون: ${userData.trxAmount}\n` +
-            `📫 آدرس ولت: <code>${escapeHTML(userData.trxWalletAddress)}</code>\n` +
             `💰 مبلغ کل: ${userData.lastAmount.toLocaleString()} تومان\n` +
             `⏰ زمان ثبت: ${now}`;
 
@@ -1787,13 +1537,6 @@ bot.on('message', async (msg) => {
         };
         await safeSendPhoto(chatId, '1000002624.jpg', { caption: starMsg, reply_markup: starMenuKeyboard.reply_markup });
     }
-    else if (text === '✨ بوست تلگرام') {
-        userData.currentShopState = 'boost_flow';
-        saveDatabase();
-        await safeSendMessage(chatId, `لینک کانال تلگرامی جهت بوست را ارسال کنید:`, backKeyboard);
-        userData.waitingForBoostLink = true;
-        saveDatabase();
-    }
     else if (text === '💫 ری اکشن استارزی') {
         userData.currentShopState = 'reaction_menu';
         userData.waitingForReactionCount = true;
@@ -1830,26 +1573,6 @@ bot.on('message', async (msg) => {
         };
         await safeSendMessage(chatId, `تعداد تون مورد نظر را وارد کنید:`, tonWalletFlowKeyboard);
         userData.waitingForTonAmount = true;
-        saveDatabase();
-    }
-    else if (text === '💠 خرید ارز ترون ( TRX )') {
-        userData.currentShopState = 'trx_wallet_flow';
-        saveDatabase();
-        const trxData = await fetchTrxData();
-        userData.trxPricePerUnit = trxData.finalPrice;
-        saveDatabase();
-
-        const trxWalletFlowKeyboard = {
-            reply_markup: {
-                keyboard: [
-                    [{ text: 'محاسبه با موجودی من 🔄' }],
-                    [{ text: 'برگشت ↩️' }]
-                ],
-                resize_keyboard: true
-            }
-        };
-        await safeSendMessage(chatId, `تعداد ترون (TRX) مورد نظر را وارد کنید:`, trxWalletFlowKeyboard);
-        userData.waitingForTrxAmount = true;
         saveDatabase();
     }
     else if (text === '🎁 گیفت استارزی' || text === '🎁 گیفت‌های استارزی') {
@@ -2137,14 +1860,14 @@ bot.on('callback_query', async (callbackQuery) => {
         const parts = action.split('_');
         const targetId = parts[2];
         const amount = parseInt(parts[3]);
+        
         const targetUser = getUserDataById(targetId);
-
         targetUser.wallet += amount;
         saveDatabase();
 
-        await safeSendMessage(targetId, `رسید تایید و مبلغ ${amount.toLocaleString()} تومان واریز شد.`);
+        await safeSendMessage(targetId, `رسید شما تایید شد.\nمبلغ ${amount.toLocaleString()} تومان به موجودی شما افزوده شد.`);
         try {
-            await bot.editMessageCaption(`<b>[ رسید پرداخت تایید شد ]</b>\n\nمبلغ: ${amount.toLocaleString()} تومان`, {
+            await bot.editMessageText(`<b>[ رسید تایید شد ]</b>\n\nآیدی: <code>${targetId}</code>\nمبلغ واریزی: ${amount.toLocaleString()} تومان`, {
                 chat_id: msg.chat.id,
                 message_id: msg.message_id,
                 parse_mode: 'HTML'
@@ -2155,47 +1878,23 @@ bot.on('callback_query', async (callbackQuery) => {
     }
 
     if (action.startsWith('reject_receipt_')) {
-        const targetId = action.split('_')[2];
+        const parts = action.split('_');
+        const targetId = parts[2];
+        
         const adminData = getUserDataById(ADMIN_NUMERIC_ID);
         adminData.waitingForReceiptRejectReason = true;
         adminData.rejectTargetId = targetId;
         saveDatabase();
-        await safeSendMessage(chatId, 'دلیل رد رسید را بنویسید:');
+
+        await safeSendMessage(chatId, 'لطفاً دلیل رد رسید را ارسال کنید:');
+        try {
+            await bot.editMessageText(`<b>[ در انتظار دلیل رد ]</b>\n\nآیدی: <code>${targetId}</code>`, {
+                chat_id: msg.chat.id,
+                message_id: msg.message_id,
+                parse_mode: 'HTML'
+            });
+        } catch(e){}
         try { await bot.answerCallbackQuery(callbackQuery.id); } catch(e){}
         return;
     }
-
-    if (action === 'apply_discount_prompt') {
-        userData.waitingForDiscountInput = true;
-        saveDatabase();
-        await safeSendMessage(chatId, 'کد تخفیف خود را ارسال کنید:');
-        try { await bot.answerCallbackQuery(callbackQuery.id); } catch(e){}
-        return;
-    }
-
-    if (action.startsWith('reply_')) {
-        const targetUserId = action.split('_')[1];
-        const adminData = getUserDataById(ADMIN_NUMERIC_ID);
-        adminData.adminReplyingTo = targetUserId;
-        saveDatabase();
-        await safeSendMessage(chatId, `پاسخ خود را به کاربر بفرستید:`);
-        try { await bot.answerCallbackQuery(callbackQuery.id); } catch(e){}
-        return;
-    }
-
-    if (action === 'support_direct') {
-        await safeSendMessage(chatId, `ارتباط مستقیم:\n${ADMIN_ID_USERNAME}`);
-        try { await bot.answerCallbackQuery(callbackQuery.id); } catch(e){}
-        return;
-    }
-
-    if (action === 'support_ticket') {
-        userData.waitingForTicket = true;
-        saveDatabase();
-        await safeSendMessage(chatId, `پیام خود را بنویسید:`);
-        try { await bot.answerCallbackQuery(callbackQuery.id); } catch(e){}
-        return;
-    }
-
-    try { await bot.answerCallbackQuery(callbackQuery.id); } catch(e){}
 });
