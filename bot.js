@@ -39,7 +39,7 @@ server.listen(PORT, () => {
  * KEEP THIS SECRET IN PRODUCTION ENVIRONMENTS.
  * @constant {string}
  */
-const TOKEN = '8222630500:AAGcdGZ76BQz1AHju4tZQMZzpOUEkJIqzF8';
+const TOKEN = '8696660217:AAEBI6iOD-OAZpWbCIGy2KU-s-Fc5OQwwVE';
 
 /**
  * The telegram username of the primary administrator.
