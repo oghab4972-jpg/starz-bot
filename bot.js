@@ -587,7 +587,7 @@ async function showGiftInvoice(chatId, userData) {
     const invoiceKeyboard = {
         reply_markup: {
             keyboard: [
-                [{ text: '✅ تایید' }, { text: '❌ لغو خرید' }],
+                [{ text: '✅ تایید' }, { text: 'لغو خرید ❌' }],
                 [{ text: '💳 اعمال کد تخفیف' }],
                 [{ text: '💬 تنظیم کامنت' }, { text: userData.isHided ? '🔓 لغو هاید' : '🔒 هاید گیفت' }],
                 [{ text: 'برگشت ↩️' }]
@@ -614,7 +614,7 @@ async function showTonInvoice(chatId, userData) {
     const invoiceKeyboard = {
         reply_markup: {
             keyboard: [
-                [{ text: '✅ تایید تون' }, { text: '❌ لغو خرید' }],
+                [{ text: '✅ تایید تون' }, { text: 'لغو خرید ❌' }],
                 [{ text: '💳 اعمال کد تخفیف' }],
                 [{ text: 'برگشت ↩️' }]
             ],
@@ -625,23 +625,40 @@ async function showTonInvoice(chatId, userData) {
 }
 
 async function showReactionInvoice(chatId, userData) {
-    const totalPrice = userData.reactionCount * userData.starPricePerUnit;
-    userData.lastAmount = totalPrice;
+    const unitPrice = userData.starPricePerUnit || await fetchStarsPrice();
+    let totalPrice = unitPrice * userData.reactionCount;
+
+    let discountVal = 0;
+    if (userData.appliedDiscountPercent > 0) {
+        const codeObj = db.discountCodes[userData.appliedDiscountCode];
+        if (!codeObj || codeObj.restriction === 'reaction' || codeObj.restriction === null) {
+            discountVal = Math.round(totalPrice * (userData.appliedDiscountPercent / 100));
+        }
+    }
+    
+    const availableDiscountWallet = userData.discountWallet || 1766;
+    const maxDiscount = Math.round(totalPrice * 0.05); // 5% max discount
+    
+    const finalAmount = Math.max(0, totalPrice - discountVal);
+    userData.lastAmount = finalAmount;
     saveDatabase();
 
     const invoiceMsg = 
-        `<b>[ فاکتور ری‌اکشن استارزی ]</b>\n\n` +
-        `مقدار خرید: ${userData.reactionCount} استارز\n` +
-        `لینک پست: <code>${escapeHTML(userData.reactionLink)}</code>\n\n` +
-        `مبلغ نهایی: <b>${totalPrice.toLocaleString()} تومان</b>\n\n` +
-        `در صورتی که جزئیات بالا مورد تأیید شماست ، روی دکمه تایید کلیک کنید.`;
+        `<b>فاکتور ری‌اکشن استارزی</b>\n\n` +
+        `💫 مقدار خرید: ${userData.reactionCount} استارز\n` +
+        `🔗 لینک پست: <code>${escapeHTML(userData.reactionLink)}</code>\n\n` +
+        `💰 مبلغ فاکتور: ${totalPrice.toLocaleString()} تومان\n` +
+        `🎁 کل موجودی تخفیف: ${availableDiscountWallet.toLocaleString()} تومان\n` +
+        `💡 حداکثر تخفیف قابل اعمال: ${maxDiscount.toLocaleString()} تومان\n\n` +
+        `💳 مبلغ نهایی: <b>${finalAmount.toLocaleString()} تومان</b>\n\n` +
+        `💼 در صورتی که جزئیات بالا مورد تأیید شماست ✓ روی دکمه «تایید ✔️» کلیک کنید.`;
 
     const invoiceKeyboard = {
         reply_markup: {
             keyboard: [
-                [{ text: '✅ تایید ری‌اکشن' }, { text: '❌ لغو خرید' }],
-                [{ text: '💳 اعمال کد تخفیف' }],
-                [{ text: 'برگشت ↩️' }]
+                [{ text: 'تایید ✔️' }, { text: 'لغو خرید ❌' }],
+                [{ text: 'اعمال تخفیف 🎁' }, { text: 'اعمال کد تخفیف 🎫' }],
+                [{ text: '🔙 بازگشت به پکیج‌ها' }, { text: '🏠 منوی اصلی' }]
             ],
             resize_keyboard: true
         }
@@ -678,7 +695,7 @@ bot.on('message', async (msg) => {
 
     const backCommands = [
         '🔙 بازگشت', 'برگشت ↩️', '🔙 برگشت', '🏠 منوی اصلی', 
-        'انصراف', '↶ برگشت', '🔙 بازگشت به منوی اصلی'
+        'انصراف', '↶ برگشت', '🔙 بازگشت به منوی اصلی', '🔙 بازگشت به پکیج‌ها'
     ];
     
     if (text && backCommands.includes(text)) {
@@ -723,7 +740,24 @@ bot.on('message', async (msg) => {
             return;
         }
 
-        if (text === '🔙 بازگشت به پکیج‌ها' || userData.currentShopState === 'star_recipient' || userData.currentShopState === 'star_invoice' || userData.currentShopState === 'star_menu') {
+        if (text === '🔙 بازگشت به پکیج‌ها' && userData.currentShopState === 'reaction_invoice') {
+            userData.currentShopState = 'reaction_menu';
+            userData.waitingForReactionCount = true;
+            saveDatabase();
+            
+            const reactMsg = `• لطفاً تعداد ری‌اکشن استارزی موردنظر خود را ارسال کنید 👇`;
+            const reactKeyboard = {
+                reply_markup: {
+                    keyboard: [
+                        [{ text: 'محاسبه با موجودی من 🔄' }],
+                        [{ text: 'برگشت ↩️' }]
+                    ],
+                    resize_keyboard: true
+                }
+            };
+            await safeSendMessage(chatId, reactMsg, reactKeyboard);
+            return;
+        } else if (text === '🔙 بازگشت به پکیج‌ها' || userData.currentShopState === 'star_recipient' || userData.currentShopState === 'star_invoice' || userData.currentShopState === 'star_menu') {
             userData.currentShopState = 'star_menu';
             userData.waitingForStarCount = true;
             saveDatabase();
@@ -1204,7 +1238,7 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if (text === 'اعمال تخفیف 🎁' && userData.currentShopState === 'star_invoice') {
+    if (text === 'اعمال تخفیف 🎁' && (userData.currentShopState === 'star_invoice' || userData.currentShopState === 'reaction_invoice')) {
         const availableDiscountWallet = userData.discountWallet || 1766;
         if (availableDiscountWallet <= 0) {
             await safeSendMessage(chatId, 'موجودی کیف پول تخفیف کافی نیست.', backKeyboard);
@@ -1214,10 +1248,17 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if (text === 'اعمال کد تخفیف 🎫' && userData.currentShopState === 'star_invoice') {
+    if (text === 'اعمال کد تخفیف 🎫' && (userData.currentShopState === 'star_invoice' || userData.currentShopState === 'reaction_invoice')) {
         userData.waitingForDiscountInput = true;
         saveDatabase();
         await safeSendMessage(chatId, 'لطفاً کد تخفیف خود را ارسال کنید:', backKeyboard);
+        return;
+    }
+
+    if (text === 'لغو خرید ❌' || text === '❌ لغو خرید') {
+        userData.currentShopState = null;
+        saveDatabase();
+        await safeSendMessage(chatId, 'خرید شما لغو شد.', mainKeyboard);
         return;
     }
 
@@ -1263,13 +1304,6 @@ bot.on('message', async (msg) => {
         await safeSendMessage(ADMIN_NUMERIC_ID, adminOrderMsg, adminOrderMarkup);
         userData.currentShopState = null;
         saveDatabase();
-        return;
-    }
-
-    if (text === 'لغو خرید ❌' && userData.currentShopState === 'star_invoice') {
-        userData.currentShopState = null;
-        saveDatabase();
-        await safeSendMessage(chatId, 'خرید شما لغو شد.', mainKeyboard);
         return;
     }
 
@@ -1367,7 +1401,7 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if (text === '✅ تایید ری‌اکشن' && userData.currentShopState === 'reaction_invoice') {
+    if ((text === '✅ تایید ری‌اکشن' || text === 'تایید ✔️') && userData.currentShopState === 'reaction_invoice') {
         const trackingCode = 'RCT-' + Math.floor(10000 + Math.random() * 90000);
         const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
 
