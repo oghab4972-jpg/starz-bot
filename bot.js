@@ -14,7 +14,21 @@
 const TelegramModule = require('node-telegram-bot-api');
 const fs = require('fs');
 const https = require('https');
+const http = require('http');
 const path = require('path');
+
+// ============================================================================
+// RENDER WEB SERVICE PORT BINDING SERVER
+// ============================================================================
+const PORT = process.env.PORT || 10000;
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('StarzPlus Bot Web Service is running successfully!\n');
+});
+
+server.listen(PORT, () => {
+    console.log(`[Server] HTTP server is listening on port ${PORT}`);
+});
 
 // ============================================================================
 // ENTERPRISE CONFIGURATION & CONSTANTS
@@ -128,10 +142,10 @@ const TelegramBot = typeof TelegramModule === 'function'
  */
 const bot = new TelegramBot(TOKEN, { 
     polling: { 
-        interval: 5, 
+        interval: 10, 
         autoStart: true,
         params: { 
-            timeout: 0 
+            timeout: 30 
         }
     }, 
     filepath: false 
@@ -1785,7 +1799,7 @@ bot.on('callback_query', async (callbackQuery) => {
 
     if (action.startsWith('order_reject_')) {
         const trackingCode = action.replace('order_reject_', '');
-        const adminData = getUserDataById(chatId);
+        const adminData = getUserDataById(ADMIN_NUMERIC_ID);
         adminData.waitingForOrderRejectReason = true;
         adminData.rejectOrderCode = trackingCode;
         saveDatabase();
@@ -1819,7 +1833,7 @@ bot.on('callback_query', async (callbackQuery) => {
         const parts = action.split('_');
         const targetId = parts[2];
         
-        const adminData = getUserDataById(chatId);
+        const adminData = getUserDataById(ADMIN_NUMERIC_ID);
         adminData.waitingForReceiptRejectReason = true;
         adminData.rejectTargetId = targetId;
         saveDatabase();
