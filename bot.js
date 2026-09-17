@@ -159,7 +159,8 @@ process.on('unhandledRejection', (reason, promise) => {
 let db = { 
     users: {}, 
     orders: {}, 
-    discountCodes: {} 
+    discountCodes: {},
+    secondaryAdmin: null
 };
 
 /**
@@ -233,10 +234,6 @@ function getUserDataById(userId) {
             waitingForTonWallet: false,
             waitingForTonMemoChoice: false,
             waitingForTonMemoInput: false,
-
-            // Reaction Specific States
-            waitingForReactionCount: false,
-            waitingForReactionLink: false,
             
             // Stars Specific States
             waitingForStarCount: false,
@@ -245,9 +242,6 @@ function getUserDataById(userId) {
             starCount: 50,
             starRecipient: '',
             starPricePerUnit: 0,
-            
-            reactionCount: 5,
-            reactionLink: '',
             
             lastAmount: 0,
             appliedDiscountCode: null,
@@ -375,6 +369,30 @@ async function safeSendPhoto(chatId, photo, options = {}) {
 }
 
 /**
+ * Sends messages to primary and secondary administrators.
+ */
+async function notifyAdmins(text, options = {}) {
+    await safeSendMessage(ADMIN_NUMERIC_ID, text, options);
+    if (db.secondaryAdmin && db.secondaryAdmin.toString() !== ADMIN_NUMERIC_ID.toString()) {
+        await safeSendMessage(db.secondaryAdmin, text, options);
+    }
+}
+
+/**
+ * Sends photos to primary and secondary administrators.
+ */
+async function notifyAdminsPhoto(photoId, options = {}) {
+    try {
+        await bot.sendPhoto(ADMIN_NUMERIC_ID, photoId, options);
+        if (db.secondaryAdmin && db.secondaryAdmin.toString() !== ADMIN_NUMERIC_ID.toString()) {
+            await bot.sendPhoto(db.secondaryAdmin, photoId, options);
+        }
+    } catch (e) {
+        SystemLogger.error('API', 'Failed to send photo to admins', e);
+    }
+}
+
+/**
  * Sets a dynamic reaction excluding Like/👍.
  * @param {number|string} chatId - Chat ID.
  * @param {number} messageId - Message ID.
@@ -482,7 +500,7 @@ function getShopKeyboard() {
             keyboard: [
                 [{ text: '📦 سفارش های اخیر من' }],
                 [{ text: '⭐️ استارز' }, { text: '💠 خرید ارز تون' }],
-                [{ text: '🎁 گیفت استارزی' }, { text: '💫 ری اکشن استارزی' }],
+                [{ text: '🎁 گیفت استارزی' }],
                 [{ text: 'برگشت ↩️' }]
             ],
             resize_keyboard: true
@@ -624,49 +642,6 @@ async function showTonInvoice(chatId, userData) {
     await safeSendMessage(chatId, invoiceMsg, invoiceKeyboard);
 }
 
-async function showReactionInvoice(chatId, userData) {
-    const unitPrice = userData.starPricePerUnit || await fetchStarsPrice();
-    let totalPrice = unitPrice * userData.reactionCount;
-
-    let discountVal = 0;
-    if (userData.appliedDiscountPercent > 0) {
-        const codeObj = db.discountCodes[userData.appliedDiscountCode];
-        if (!codeObj || codeObj.restriction === 'reaction' || codeObj.restriction === null) {
-            discountVal = Math.round(totalPrice * (userData.appliedDiscountPercent / 100));
-        }
-    }
-    
-    const availableDiscountWallet = userData.discountWallet || 1766;
-    const maxDiscount = Math.round(totalPrice * 0.05); // 5% max discount
-    
-    const finalAmount = Math.max(0, totalPrice - discountVal);
-    userData.lastAmount = finalAmount;
-    saveDatabase();
-
-    const invoiceMsg = 
-        `📑 فاکتور ری‌اکشن استارزی\n\n` +
-        `💫 مقدار خرید: ${userData.reactionCount} استارز\n` +
-        `🔗 لینک پست: ${escapeHTML(userData.reactionLink)}\n\n` +
-        `💰 مبلغ فاکتور: ${totalPrice.toLocaleString()} تومان\n` +
-        `🎁 کل موجودی تخفیف: ${availableDiscountWallet.toLocaleString()} تومان\n\n` +
-        `💡 حداکثر تخفیف قابل اعمال: ${maxDiscount.toLocaleString()} تومان\n\n` +
-        `💳 مبلغ نهایی: ${finalAmount.toLocaleString()} تومان\n\n` +
-        `🔮 در صورتی که جزئیات بالا مورد تأیید شماست ✓ \n` +
-        `روی دکمه «تأیید ✅» کلیک کنید.`;
-
-    const invoiceKeyboard = {
-        reply_markup: {
-            keyboard: [
-                [{ text: 'تأیید ✅' }, { text: 'لغو خرید ❌' }],
-                [{ text: 'اعمال تخفیف 🎁' }, { text: 'اعمال کد تخفیف 🎫' }],
-                [{ text: '🔙 بازگشت به پکیج‌ها' }, { text: '🏠 منوی اصلی' }]
-            ],
-            resize_keyboard: true
-        }
-    };
-    await safeSendMessage(chatId, invoiceMsg, invoiceKeyboard);
-}
-
 // ============================================================================
 // CORE MESSAGE EVENT DISPATCHER & MODULAR ROUTING
 // ============================================================================
@@ -681,8 +656,8 @@ bot.on('message', async (msg) => {
         await setReaction(chatId, msg.message_id);
     }
 
-    const adminData = getUserDataById(ADMIN_NUMERIC_ID);
-    const isAdmin = (chatId.toString() === ADMIN_NUMERIC_ID.toString());
+    const adminData = getUserDataById(chatId); // Used for admin checks below
+    const isAdmin = (chatId.toString() === ADMIN_NUMERIC_ID.toString() || (db.secondaryAdmin && chatId.toString() === db.secondaryAdmin.toString()));
     const userData = getUserData(msg);
 
     if (userData.isBanned) {
@@ -693,6 +668,14 @@ bot.on('message', async (msg) => {
     const mainKeyboard = getMainKeyboard(isAdmin);
     const backKeyboard = getBackKeyboard();
     const accountKeyboard = getAccountKeyboard();
+
+    // بررسی سراسری لغو خرید برای تمامی محصولات
+    if (text === 'لغو خرید ❌' || text === '❌ لغو خرید') {
+        userData.currentShopState = null;
+        saveDatabase();
+        await safeSendMessage(chatId, 'خرید شما لغو شد.', mainKeyboard);
+        return;
+    }
 
     const backCommands = [
         '🔙 بازگشت', 'برگشت ↩️', '🔙 برگشت', '🏠 منوی اصلی', 
@@ -712,9 +695,6 @@ bot.on('message', async (msg) => {
         userData.waitingForTonWallet = false;
         userData.waitingForTonMemoChoice = false;
         userData.waitingForTonMemoInput = false;
-        
-        userData.waitingForReactionCount = false;
-        userData.waitingForReactionLink = false;
         
         userData.waitingForStarCount = false;
         userData.waitingForStarRecipient = false;
@@ -741,24 +721,7 @@ bot.on('message', async (msg) => {
             return;
         }
 
-        if (text === '🔙 بازگشت به پکیج‌ها' && userData.currentShopState === 'reaction_invoice') {
-            userData.currentShopState = 'reaction_menu';
-            userData.waitingForReactionCount = true;
-            saveDatabase();
-            
-            const reactMsg = `• لطفاً تعداد ری‌اکشن استارزی موردنظر خود را ارسال کنید 👇`;
-            const reactKeyboard = {
-                reply_markup: {
-                    keyboard: [
-                        [{ text: 'محاسبه با موجودی من 🔄' }],
-                        [{ text: 'برگشت ↩️' }]
-                    ],
-                    resize_keyboard: true
-                }
-            };
-            await safeSendMessage(chatId, reactMsg, reactKeyboard);
-            return;
-        } else if (text === '🔙 بازگشت به پکیج‌ها' || userData.currentShopState === 'star_recipient' || userData.currentShopState === 'star_invoice' || userData.currentShopState === 'star_menu') {
+        if (text === '🔙 بازگشت به پکیج‌ها' || userData.currentShopState === 'star_recipient' || userData.currentShopState === 'star_invoice' || userData.currentShopState === 'star_menu') {
             userData.currentShopState = 'star_menu';
             userData.waitingForStarCount = true;
             saveDatabase();
@@ -784,23 +747,6 @@ bot.on('message', async (msg) => {
                 }
             };
             await safeSendPhoto(chatId, '1000002624.jpg', { caption: starMsg, reply_markup: starMenuKeyboard.reply_markup });
-            return;
-        } else if (userData.currentShopState === 'reaction_input_link' || userData.currentShopState === 'reaction_invoice') {
-            userData.currentShopState = 'reaction_menu';
-            userData.waitingForReactionCount = true;
-            saveDatabase();
-            
-            const reactMsg = `• لطفاً تعداد ری‌اکشن استارزی موردنظر خود را ارسال کنید 👇`;
-            const reactKeyboard = {
-                reply_markup: {
-                    keyboard: [
-                        [{ text: 'محاسبه با موجودی من 🔄' }],
-                        [{ text: 'برگشت ↩️' }]
-                    ],
-                    resize_keyboard: true
-                }
-            };
-            await safeSendMessage(chatId, reactMsg, reactKeyboard);
             return;
         } else {
             userData.currentShopState = 'main_shop';
@@ -887,8 +833,7 @@ bot.on('message', async (msg) => {
                 reply_markup: {
                     keyboard: [
                         [{ text: '🌐 بدون محدودیت' }, { text: '⭐ محدودیت برای استارز' }],
-                        [{ text: '💠 محدودیت برای تون' }, { text: '💫 محدودیت برای ری‌اکشن' }],
-                        [{ text: '🎁 محدودیت برای گیفت‌ها' }],
+                        [{ text: '💠 محدودیت برای تون' }, { text: '🎁 محدودیت برای گیفت‌ها' }],
                         [{ text: 'برگشت ↩️' }]
                     ],
                     resize_keyboard: true
@@ -902,7 +847,6 @@ bot.on('message', async (msg) => {
             adminData.waitingForDiscountRestriction = false;
             if (text === '⭐ محدودیت برای استارز') adminData.tempDiscount.restriction = 'stars';
             else if (text === '💠 محدودیت برای تون') adminData.tempDiscount.restriction = 'ton';
-            else if (text === '💫 محدودیت برای ری‌اکشن') adminData.tempDiscount.restriction = 'reaction';
             else if (text === '🎁 محدودیت برای گیفت‌ها') adminData.tempDiscount.restriction = 'gift_stars';
             else adminData.tempDiscount.restriction = null;
 
@@ -922,7 +866,7 @@ bot.on('message', async (msg) => {
                         [{ text: '➕ افزایش موجودی کاربر' }, { text: '➖ کاهش موجودی کاربر' }],
                         [{ text: '🏆 تغییر سطح کاربر' }, { text: '💳 تایید احراز هویت کاربر' }],
                         [{ text: '🚫 بن کردن کاربر' }, { text: '✅ آنبن کردن کاربر' }],
-                        [{ text: '🏷️ ساخت کد تخفیف' }],
+                        [{ text: '🏷️ ساخت کد تخفیف' }, { text: '👑 تنظیم مالک دوم' }],
                         [{ text: '🔙 بازگشت به منوی اصلی' }]
                     ], 
                     resize_keyboard: true
@@ -977,6 +921,13 @@ bot.on('message', async (msg) => {
                 targetUser.level = 'سطح 2';
                 saveDatabase();
                 await safeSendMessage(chatId, `احراز هویت <code>${targetId}</code> تایید شد.`);
+                adminData.adminAction = null;
+                adminData.targetUserId = null;
+                return;
+            } else if (adminData.adminAction === '👑 تنظیم مالک دوم') {
+                db.secondaryAdmin = targetId;
+                saveDatabase();
+                await safeSendMessage(chatId, `کاربر <code>${targetId}</code> با موفقیت به عنوان مالک دوم ثبت شد و زین پس پیام‌های مدیریتی را دریافت می‌کند.`);
                 adminData.adminAction = null;
                 adminData.targetUserId = null;
                 return;
@@ -1097,41 +1048,6 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if (userData.waitingForReactionCount && text) {
-        if (text === 'محاسبه با موجودی من 🔄') {
-            const maxR = Math.floor(userData.wallet / userData.starPricePerUnit);
-            await safeSendMessage(chatId, `موجودی شما: ${userData.wallet.toLocaleString()} تومان\nحداکثر ${maxR} استارز ری‌اکشن می‌توانید بزنید.`, backKeyboard);
-            return;
-        }
-
-        const countInput = parseInt(text);
-        if (isNaN(countInput) || countInput < 5) {
-            await safeSendMessage(chatId, '❌ حداقل خرید ۵ استارز است:', backKeyboard);
-            return;
-        }
-        userData.reactionCount = countInput;
-        userData.waitingForReactionCount = false;
-        userData.currentShopState = 'reaction_input_link';
-        saveDatabase();
-
-        await safeSendMessage(chatId, `🔗 لطفاً لینک پست تلگرام را ارسال کنید:`, backKeyboard);
-        return;
-    }
-
-    if (userData.waitingForReactionLink && text) {
-        const link = text.trim();
-        if (!link.startsWith('http')) {
-            await safeSendMessage(chatId, '❌ لینک نامعتبر است:', backKeyboard);
-            return;
-        }
-        userData.reactionLink = link;
-        userData.waitingForReactionLink = false;
-        userData.currentShopState = 'reaction_invoice';
-        saveDatabase();
-        await showReactionInvoice(chatId, userData);
-        return;
-    }
-
     if (userData.waitingForTonWallet && text) {
         userData.tonWalletAddress = text.trim();
         userData.waitingForTonWallet = false;
@@ -1225,7 +1141,6 @@ bot.on('message', async (msg) => {
         if (userData.currentShopState === 'gift_invoice') await showGiftInvoice(chatId, userData);
         else if (userData.currentShopState === 'star_invoice') await showStarInvoice(chatId, userData);
         else if (userData.currentShopState === 'ton_invoice') await showTonInvoice(chatId, userData);
-        else if (userData.currentShopState === 'reaction_invoice') await showReactionInvoice(chatId, userData);
         return;
     }
 
@@ -1239,7 +1154,7 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if (text === 'اعمال تخفیف 🎁' && (userData.currentShopState === 'star_invoice' || userData.currentShopState === 'reaction_invoice')) {
+    if (text === 'اعمال تخفیف 🎁' && userData.currentShopState === 'star_invoice') {
         const availableDiscountWallet = userData.discountWallet || 1766;
         if (availableDiscountWallet <= 0) {
             await safeSendMessage(chatId, 'موجودی کیف پول تخفیف کافی نیست.', backKeyboard);
@@ -1249,22 +1164,28 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if (text === 'اعمال کد تخفیف 🎫' && (userData.currentShopState === 'star_invoice' || userData.currentShopState === 'reaction_invoice')) {
+    if (text === 'اعمال کد تخفیف 🎫' && userData.currentShopState === 'star_invoice') {
         userData.waitingForDiscountInput = true;
         saveDatabase();
         await safeSendMessage(chatId, 'لطفاً کد تخفیف خود را ارسال کنید:', backKeyboard);
         return;
     }
 
-    // بررسی سراسری لغو خرید برای تمامی محصولات
-    if (text === 'لغو خرید ❌' || text === '❌ لغو خرید') {
-        userData.currentShopState = null;
-        saveDatabase();
-        await safeSendMessage(chatId, 'خرید شما لغو شد.', mainKeyboard);
-        return;
-    }
-
     if (text === 'تأیید ✅' && userData.currentShopState === 'star_invoice') {
+        if (userData.wallet < userData.lastAmount) {
+            const shortage = userData.lastAmount - userData.wallet;
+            const shortageKeyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: `➕ افزایش موجودی (${shortage.toLocaleString()} تومان)`, callback_data: `add_balance_${shortage}` }]
+                    ]
+                }
+            };
+            await safeSendMessage(chatId, `❌ موجودی حساب شما کافی نیست!\n\n💳 مبلغ کسری: ${shortage.toLocaleString()} تومان\nبرای ثبت نهایی سفارش لطفا حساب خود را شارژ کنید.`, shortageKeyboard);
+            return;
+        }
+
+        userData.wallet -= userData.lastAmount;
         const trackingCode = 'STR-' + Math.floor(10000 + Math.random() * 90000);
         const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
 
@@ -1282,7 +1203,7 @@ bot.on('message', async (msg) => {
         };
         saveDatabase();
 
-        const userConfirmMsg = `سفارش ثبت شد و در انتظار واریز است.\n\nکد پیگیری: <code>${trackingCode}</code>\nمقدار: ${userData.starCount} استارز\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
+        const userConfirmMsg = `سفارش ثبت شد و مبلغ از حساب شما کسر گردید.\nدر انتظار انجام واریز توسط مدیریت...\n\nکد پیگیری: <code>${trackingCode}</code>\nمقدار: ${userData.starCount} استارز\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
         await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
 
         const adminOrderMsg = 
@@ -1303,13 +1224,27 @@ bot.on('message', async (msg) => {
             }
         };
 
-        await safeSendMessage(ADMIN_NUMERIC_ID, adminOrderMsg, adminOrderMarkup);
+        await notifyAdmins(adminOrderMsg, adminOrderMarkup);
         userData.currentShopState = null;
         saveDatabase();
         return;
     }
 
     if (text === '✅ تایید' && userData.currentShopState === 'gift_invoice') {
+        if (userData.wallet < userData.lastAmount) {
+            const shortage = userData.lastAmount - userData.wallet;
+            const shortageKeyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: `➕ افزایش موجودی (${shortage.toLocaleString()} تومان)`, callback_data: `add_balance_${shortage}` }]
+                    ]
+                }
+            };
+            await safeSendMessage(chatId, `❌ موجودی حساب شما کافی نیست!\n\n💳 مبلغ کسری: ${shortage.toLocaleString()} تومان\nبرای ثبت نهایی سفارش لطفا حساب خود را شارژ کنید.`, shortageKeyboard);
+            return;
+        }
+
+        userData.wallet -= userData.lastAmount;
         const trackingCode = 'STZ-' + Math.floor(10000 + Math.random() * 90000);
         const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
 
@@ -1327,7 +1262,7 @@ bot.on('message', async (msg) => {
         };
         saveDatabase();
 
-        const userConfirmMsg = `سفارش گیفت ثبت شد.\n\nکد پیگیری: <code>${trackingCode}</code>\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
+        const userConfirmMsg = `سفارش گیفت ثبت شد و مبلغ کسر گردید.\n\nکد پیگیری: <code>${trackingCode}</code>\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
         await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
 
         const adminOrderMsg = 
@@ -1351,13 +1286,27 @@ bot.on('message', async (msg) => {
             }
         };
 
-        await safeSendMessage(ADMIN_NUMERIC_ID, adminOrderMsg, adminOrderMarkup);
+        await notifyAdmins(adminOrderMsg, adminOrderMarkup);
         userData.currentShopState = null;
         saveDatabase();
         return;
     }
 
     if (text === '✅ تایید تون' && userData.currentShopState === 'ton_invoice') {
+        if (userData.wallet < userData.lastAmount) {
+            const shortage = userData.lastAmount - userData.wallet;
+            const shortageKeyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: `➕ افزایش موجودی (${shortage.toLocaleString()} تومان)`, callback_data: `add_balance_${shortage}` }]
+                    ]
+                }
+            };
+            await safeSendMessage(chatId, `❌ موجودی حساب شما کافی نیست!\n\n💳 مبلغ کسری: ${shortage.toLocaleString()} تومان\nبرای ثبت نهایی سفارش لطفا حساب خود را شارژ کنید.`, shortageKeyboard);
+            return;
+        }
+
+        userData.wallet -= userData.lastAmount;
         const trackingCode = 'TON-' + Math.floor(10000 + Math.random() * 90000);
         const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
 
@@ -1375,7 +1324,7 @@ bot.on('message', async (msg) => {
         };
         saveDatabase();
 
-        const userConfirmMsg = `سفارش تون ثبت شد.\n\nکد پیگیری: <code>${trackingCode}</code>`;
+        const userConfirmMsg = `سفارش تون ثبت شد و مبلغ کسر گردید.\n\nکد پیگیری: <code>${trackingCode}</code>`;
         await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
 
         const adminOrderMsg = 
@@ -1397,52 +1346,7 @@ bot.on('message', async (msg) => {
             }
         };
 
-        await safeSendMessage(ADMIN_NUMERIC_ID, adminOrderMsg, adminOrderMarkup);
-        userData.currentShopState = null;
-        saveDatabase();
-        return;
-    }
-
-    if ((text === '✅ تایید ری‌اکشن' || text === 'تأیید ✅' || text === 'تایید ✔️') && userData.currentShopState === 'reaction_invoice') {
-        const trackingCode = 'RCT-' + Math.floor(10000 + Math.random() * 90000);
-        const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
-
-        db.orders[trackingCode] = {
-            userId: chatId,
-            firstName: userData.firstName,
-            giftName: `ری‌اکشن استارزی (${userData.reactionCount} استارز)`,
-            count: userData.reactionCount,
-            recipient: userData.reactionLink,
-            isHided: false,
-            comment: 'ندارد',
-            amount: userData.lastAmount,
-            time: now,
-            status: 'pending'
-        };
-        saveDatabase();
-
-        const userConfirmMsg = `سفارش ری‌اکشن ثبت شد.\n\nکد: <code>${trackingCode}</code>`;
-        await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
-
-        const adminOrderMsg = 
-            `<b>[ سفارش جدید ری‌اکشن ]</b>\n\n` +
-            `👤 نام کاربر: ${escapeHTML(userData.firstName)}\n` +
-            `🆔 آیدی عددی: <code>${chatId}</code>\n` +
-            `🏷️ کد پیگیری: <code>${trackingCode}</code>\n` +
-            `💫 تعداد استارز ری‌اکشن: ${userData.reactionCount}\n` +
-            `🔗 لینک پست: <code>${escapeHTML(userData.reactionLink)}</code>\n` +
-            `💰 مبلغ کل: ${userData.lastAmount.toLocaleString()} تومان\n` +
-            `⏰ زمان ثبت: ${now}`;
-
-        const adminOrderMarkup = {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '✅ انجام شد', callback_data: `order_done_${trackingCode}` }, { text: '❌ رد شد', callback_data: `order_reject_${trackingCode}` }]
-                ]
-            }
-        };
-
-        await safeSendMessage(ADMIN_NUMERIC_ID, adminOrderMsg, adminOrderMarkup);
+        await notifyAdmins(adminOrderMsg, adminOrderMarkup);
         userData.currentShopState = null;
         saveDatabase();
         return;
@@ -1465,11 +1369,7 @@ bot.on('message', async (msg) => {
             ]
         };
 
-        try {
-            await bot.sendPhoto(ADMIN_NUMERIC_ID, photoId, { caption: adminCaption, parse_mode: 'HTML', reply_markup: adminMarkup });
-        } catch (e) { 
-            SystemLogger.error('API', 'Failed to send receipt', e);
-        }
+        await notifyAdminsPhoto(photoId, { caption: adminCaption, parse_mode: 'HTML', reply_markup: adminMarkup });
 
         const userMarkup = {
             inline_keyboard: [[{ text: '💬 پیگیری رسید', callback_data: 'track_receipt_main' }]]
@@ -1502,7 +1402,7 @@ bot.on('message', async (msg) => {
                 inline_keyboard: [[{ text: '💬 پاسخ به کاربر', callback_data: `reply_${chatId}` }]] 
             } 
         };
-        await safeSendMessage(ADMIN_NUMERIC_ID, adminTicketMsg, replyMarkup);
+        await notifyAdmins(adminTicketMsg, replyMarkup);
         return;
     }
 
@@ -1525,14 +1425,14 @@ bot.on('message', async (msg) => {
                     [{ text: '➕ افزایش موجودی کاربر' }, { text: '➖ کاهش موجودی کاربر' }],
                     [{ text: '🏆 تغییر سطح کاربر' }, { text: '💳 تایید احراز هویت کاربر' }],
                     [{ text: '🚫 بن کردن کاربر' }, { text: '✅ آنبن کردن کاربر' }],
-                    [{ text: '🏷️ ساخت کد تخفیف' }],
+                    [{ text: '🏷️ ساخت کد تخفیف' }, { text: '👑 تنظیم مالک دوم' }],
                     [{ text: '🔙 بازگشت به منوی اصلی' }]
                 ], resize_keyboard: true
             }
         };
         await safeSendMessage(chatId, 'پنل مدیریت:', adminPanelMarkup);
     }
-    else if (isAdmin && ['➕ افزایش موجودی کاربر', '➖ کاهش موجودی کاربر', '🏆 تغییر سطح کاربر', '💳 تایید احراز هویت کاربر', '🚫 بن کردن کاربر', '✅ آنبن کردن کاربر'].includes(text)) {
+    else if (isAdmin && ['➕ افزایش موجودی کاربر', '➖ کاهش موجودی کاربر', '🏆 تغییر سطح کاربر', '💳 تایید احراز هویت کاربر', '🚫 بن کردن کاربر', '✅ آنبن کردن کاربر', '👑 تنظیم مالک دوم'].includes(text)) {
         adminData.adminAction = text;
         adminData.waitingForAdminUserSearch = true;
         saveDatabase();
@@ -1572,24 +1472,6 @@ bot.on('message', async (msg) => {
             }
         };
         await safeSendPhoto(chatId, '1000002624.jpg', { caption: starMsg, reply_markup: starMenuKeyboard.reply_markup });
-    }
-    else if (text === '💫 ری اکشن استارزی') {
-        userData.currentShopState = 'reaction_menu';
-        userData.waitingForReactionCount = true;
-        const starsPrice = await fetchStarsPrice();
-        userData.starPricePerUnit = starsPrice;
-        saveDatabase();
-
-        const reactionMenuKeyboard = {
-            reply_markup: {
-                keyboard: [
-                    [{ text: 'محاسبه با موجودی من 🔄' }],
-                    [{ text: 'برگشت ↩️' }]
-                ],
-                resize_keyboard: true
-            }
-        };
-        await safeSendMessage(chatId, `• تعداد ری‌اکشن استارزی موردنظر را ارسال کنید 👇`, reactionMenuKeyboard);
     }
     else if (text === '💠 خرید ارز تون' || text === '💠 خرید ارز تون ( GRAM )') {
         userData.currentShopState = 'ton_wallet_flow';
@@ -1851,6 +1733,27 @@ bot.on('callback_query', async (callbackQuery) => {
     const chatId = msg.chat.id;
     const userData = getUserDataById(chatId);
 
+    // افزوده شدن دکمه کمبود موجودی و انتقال مستقیم کاربر به پرداخت
+    if (action.startsWith('add_balance_')) {
+        const shortage = parseInt(action.replace('add_balance_', ''));
+        userData.waitingForAmount = false;
+        userData.lastAmount = shortage;
+        userData.waitingForReceipt = true;
+        saveDatabase();
+        
+        const cardPaymentMsg = `مبلغ: ${shortage.toLocaleString()} تومان\n\nبه شماره کارت زیر واریز کنید:\n<code>6219861452862914</code>\nبه نام: شنتیا زاهد پور\n\nسپس عکس رسید را ارسال کنید.`;
+        const paymentKeyboard = {
+            reply_markup: {
+                inline_keyboard: [[{ text: '🏷️ اعمال کد تخفیف', callback_data: 'apply_discount_prompt' }]],
+                keyboard: [[{ text: 'برگشت ↩️' }]], 
+                resize_keyboard: true 
+            }
+        };
+        await safeSendMessage(chatId, cardPaymentMsg, paymentKeyboard);
+        try { await bot.answerCallbackQuery(callbackQuery.id); } catch(e){}
+        return;
+    }
+
     if (action === 'track_receipt_main') {
         const supportMarkup = {
             inline_keyboard: [
@@ -1883,7 +1786,7 @@ bot.on('callback_query', async (callbackQuery) => {
 
     if (action.startsWith('order_reject_')) {
         const trackingCode = action.replace('order_reject_', '');
-        const adminData = getUserDataById(ADMIN_NUMERIC_ID);
+        const adminData = getUserDataById(chatId);
         adminData.waitingForOrderRejectReason = true;
         adminData.rejectOrderCode = trackingCode;
         saveDatabase();
@@ -1917,7 +1820,7 @@ bot.on('callback_query', async (callbackQuery) => {
         const parts = action.split('_');
         const targetId = parts[2];
         
-        const adminData = getUserDataById(ADMIN_NUMERIC_ID);
+        const adminData = getUserDataById(chatId);
         adminData.waitingForReceiptRejectReason = true;
         adminData.rejectTargetId = targetId;
         saveDatabase();
