@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * STARZPLUS TELEGRAM BOT - V3.1 (ENTERPRISE RESTRUCTURED)
+ * NOVA_SHOP TELEGRAM BOT - V3.1 (ENTERPRISE RESTRUCTURED)
  * ============================================================================
  * Features & Architecture Upgrades:
  * - Completely modular separation of buy flows, state managers, and handlers.
@@ -23,7 +23,7 @@ const path = require('path');
 const PORT = process.env.PORT || 10000;
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('StarzPlus Bot Web Service is running successfully!\n');
+    res.end('NOVA_SHOP Bot Web Service is running successfully!\n');
 });
 
 server.listen(PORT, () => {
@@ -39,7 +39,7 @@ server.listen(PORT, () => {
  * KEEP THIS SECRET IN PRODUCTION ENVIRONMENTS.
  * @constant {string}
  */
-const TOKEN = '8696660217:AAEBI6iOD-OAZpWbCIGy2KU-s-Fc5OQwwVE';
+const TOKEN = '8524455401:AAEWvhMfGzH8OYrQhB_En0pHMkWfaxQMptk';
 
 /**
  * The telegram username of the primary administrator.
@@ -210,7 +210,7 @@ function saveDatabase() {
 
 // Trigger initial load
 loadDatabase();
-SystemLogger.info('System', 'StarzPlus Bot is running with Modular HTML Parsing & Live APIs!');
+SystemLogger.info('System', 'NOVA_SHOP Bot is running with Modular HTML Parsing & Live APIs!');
 
 // ============================================================================
 // USER STATE MACHINE & DATA MANAGEMENT
@@ -431,7 +431,7 @@ async function setReaction(chatId, messageId) {
 
 async function getUsdtToToman() {
     return new Promise((resolve) => {
-        https.get('https://api.wallex.ir/v1/markets', { headers: { 'User-Agent': 'Mozilla/5.0 StarzBot' } }, (res) => {
+        https.get('https://api.wallex.ir/v1/markets', { headers: { 'User-Agent': 'Mozilla/5.0 NovaShopBot' } }, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
@@ -461,7 +461,7 @@ async function fetchStarsPrice() {
 
 async function getBinancePriceUsd(symbol) {
     return new Promise((resolve) => {
-        https.get(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`, { headers: { 'User-Agent': 'Mozilla/5.0 StarzBot' } }, (res) => {
+        https.get(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`, { headers: { 'User-Agent': 'Mozilla/5.0 NovaShopBot' } }, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
@@ -864,7 +864,7 @@ bot.on('message', async (msg) => {
             else if (text === '🎁 محدودیت برای گیفت‌ها') adminData.tempDiscount.restriction = 'gift_stars';
             else adminData.tempDiscount.restriction = null;
 
-            const code = 'STARZ-' + Math.floor(1000 + Math.random() * 9000);
+            const code = 'NOVA-' + Math.floor(1000 + Math.random() * 9000);
             db.discountCodes[code] = {
                 percent: adminData.tempDiscount.percent,
                 capacity: adminData.tempDiscount.capacity,
@@ -1427,7 +1427,7 @@ bot.on('message', async (msg) => {
     if (text && text.startsWith('/start')) {
         userData.currentShopState = null;
         saveDatabase();
-        const welcomeText = `به استارزپلاس خوش آمدید ! 🌟\nمجموعه‌ای کامل برای خدمات تلگرامی شما.`;
+        const welcomeText = `به ربات NOVA_SHOP خوش آمدید ! 🌟\nمجموعه‌ای کامل برای خدمات تلگرامی شما.`;
         await safeSendPhoto(chatId, '1000002624.jpg', { caption: welcomeText, reply_markup: mainKeyboard.reply_markup });
         return;
     } 
@@ -1474,7 +1474,7 @@ bot.on('message', async (msg) => {
             `🎯 کاربردهای استارز :\n` +
             `✨ فعال‌سازی ری‌اکشن‌ها\n` +
             `🎯 خرید یا تمدید اکانت پرمیوم\n\n` +
-            `🪐 لطفاً تعداد استارز مورد نظر را ارسال کنید:`;
+            `🪐 لطفاً تعداد استارز مورد نظر خود را ارسال کنید:`;
 
         const starMenuKeyboard = {
             reply_markup: {
@@ -1647,7 +1647,7 @@ bot.on('message', async (msg) => {
         if (userData.currentShopState === 'gift_invoice') await showGiftInvoice(chatId, userData);
     }
     else if (text === '❤️ چه طور میتوانم به شما اعتماد کنم' || text === '❤️ چطور میتوانم به شما اعتماد کنم') {
-        const trustMsg = `استارزپلاس با رضایت هزاران مشتری فعال در خدمت شماست.\n\nکانال اعتماد:\n@snt_shopp`;
+        const trustMsg = `NOVA_SHOP با رضایت هزاران مشتری فعال در خدمت شماست.\n\nکانال اعتماد:\n@snt_shopp`;
         await safeSendMessage(chatId, trustMsg, backKeyboard);
     }
     else if (text === '📦 پیگیری سفارش') {
