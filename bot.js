@@ -234,7 +234,7 @@ function getUserDataById(userId) {
             waitingForTonWallet: false,
             waitingForTonMemoChoice: false,
             waitingForTonMemoInput: false,
-            
+
             // Stars Specific States
             waitingForStarCount: false,
             waitingForStarRecipient: false,
@@ -369,7 +369,7 @@ async function safeSendPhoto(chatId, photo, options = {}) {
 }
 
 /**
- * Sends messages to primary and secondary administrators.
+ * Sends notifications to primary and secondary administrators.
  */
 async function notifyAdmins(text, options = {}) {
     await safeSendMessage(ADMIN_NUMERIC_ID, text, options);
@@ -656,7 +656,7 @@ bot.on('message', async (msg) => {
         await setReaction(chatId, msg.message_id);
     }
 
-    const adminData = getUserDataById(chatId); // Used for admin checks below
+    const adminData = getUserDataById(chatId);
     const isAdmin = (chatId.toString() === ADMIN_NUMERIC_ID.toString() || (db.secondaryAdmin && chatId.toString() === db.secondaryAdmin.toString()));
     const userData = getUserData(msg);
 
@@ -669,7 +669,7 @@ bot.on('message', async (msg) => {
     const backKeyboard = getBackKeyboard();
     const accountKeyboard = getAccountKeyboard();
 
-    // بررسی سراسری لغو خرید برای تمامی محصولات
+    // هندل سراسری لغو خرید برای تمامی پلتفرم‌ها و مراحل
     if (text === 'لغو خرید ❌' || text === '❌ لغو خرید') {
         userData.currentShopState = null;
         saveDatabase();
@@ -927,7 +927,7 @@ bot.on('message', async (msg) => {
             } else if (adminData.adminAction === '👑 تنظیم مالک دوم') {
                 db.secondaryAdmin = targetId;
                 saveDatabase();
-                await safeSendMessage(chatId, `کاربر <code>${targetId}</code> با موفقیت به عنوان مالک دوم ثبت شد و زین پس پیام‌های مدیریتی را دریافت می‌کند.`);
+                await safeSendMessage(chatId, `کاربر <code>${targetId}</code> به عنوان مالک دوم با موفقیت ثبت شد.`);
                 adminData.adminAction = null;
                 adminData.targetUserId = null;
                 return;
@@ -1203,7 +1203,7 @@ bot.on('message', async (msg) => {
         };
         saveDatabase();
 
-        const userConfirmMsg = `سفارش ثبت شد و مبلغ از حساب شما کسر گردید.\nدر انتظار انجام واریز توسط مدیریت...\n\nکد پیگیری: <code>${trackingCode}</code>\nمقدار: ${userData.starCount} استارز\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
+        const userConfirmMsg = `سفارش ثبت شد و مبلغ از حساب شما کسر گردید.\n\nکد پیگیری: <code>${trackingCode}</code>\nمقدار: ${userData.starCount} استارز\nمبلغ: ${userData.lastAmount.toLocaleString()} تومان`;
         await safeSendMessage(chatId, userConfirmMsg, mainKeyboard);
 
         const adminOrderMsg = 
@@ -1733,7 +1733,6 @@ bot.on('callback_query', async (callbackQuery) => {
     const chatId = msg.chat.id;
     const userData = getUserDataById(chatId);
 
-    // افزوده شدن دکمه کمبود موجودی و انتقال مستقیم کاربر به پرداخت
     if (action.startsWith('add_balance_')) {
         const shortage = parseInt(action.replace('add_balance_', ''));
         userData.waitingForAmount = false;
