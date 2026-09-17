@@ -644,19 +644,20 @@ async function showReactionInvoice(chatId, userData) {
     saveDatabase();
 
     const invoiceMsg = 
-        `<b>فاکتور ری‌اکشن استارزی</b>\n\n` +
+        `📑 فاکتور ری‌اکشن استارزی\n\n` +
         `💫 مقدار خرید: ${userData.reactionCount} استارز\n` +
-        `🔗 لینک پست: <code>${escapeHTML(userData.reactionLink)}</code>\n\n` +
+        `🔗 لینک پست: ${escapeHTML(userData.reactionLink)}\n\n` +
         `💰 مبلغ فاکتور: ${totalPrice.toLocaleString()} تومان\n` +
-        `🎁 کل موجودی تخفیف: ${availableDiscountWallet.toLocaleString()} تومان\n` +
+        `🎁 کل موجودی تخفیف: ${availableDiscountWallet.toLocaleString()} تومان\n\n` +
         `💡 حداکثر تخفیف قابل اعمال: ${maxDiscount.toLocaleString()} تومان\n\n` +
-        `💳 مبلغ نهایی: <b>${finalAmount.toLocaleString()} تومان</b>\n\n` +
-        `💼 در صورتی که جزئیات بالا مورد تأیید شماست ✓ روی دکمه «تایید ✔️» کلیک کنید.`;
+        `💳 مبلغ نهایی: ${finalAmount.toLocaleString()} تومان\n\n` +
+        `🔮 در صورتی که جزئیات بالا مورد تأیید شماست ✓ \n` +
+        `روی دکمه «تأیید ✅» کلیک کنید.`;
 
     const invoiceKeyboard = {
         reply_markup: {
             keyboard: [
-                [{ text: 'تایید ✔️' }, { text: 'لغو خرید ❌' }],
+                [{ text: 'تأیید ✅' }, { text: 'لغو خرید ❌' }],
                 [{ text: 'اعمال تخفیف 🎁' }, { text: 'اعمال کد تخفیف 🎫' }],
                 [{ text: '🔙 بازگشت به پکیج‌ها' }, { text: '🏠 منوی اصلی' }]
             ],
@@ -1255,6 +1256,7 @@ bot.on('message', async (msg) => {
         return;
     }
 
+    // بررسی سراسری لغو خرید برای تمامی محصولات
     if (text === 'لغو خرید ❌' || text === '❌ لغو خرید') {
         userData.currentShopState = null;
         saveDatabase();
@@ -1401,7 +1403,7 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    if ((text === '✅ تایید ری‌اکشن' || text === 'تایید ✔️') && userData.currentShopState === 'reaction_invoice') {
+    if ((text === '✅ تایید ری‌اکشن' || text === 'تأیید ✅' || text === 'تایید ✔️') && userData.currentShopState === 'reaction_invoice') {
         const trackingCode = 'RCT-' + Math.floor(10000 + Math.random() * 90000);
         const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
 
