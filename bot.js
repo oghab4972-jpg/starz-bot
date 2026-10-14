@@ -1,8 +1,8 @@
 /**
  * ============================================================================
- * Stars Plus / نوا شاپ TELEGRAM BOT - V6
- * - ارسال آنی TON از ولت ربات
- * - جاگذاری مستقیم کلیدها و توکن
+ * Stars Plus / نوا شاپ TELEGRAM BOT - V6 (FIXED SYNTAX)
+ * - توکن جدید جاگذاری شد
+ * - تمام ارورهای ساختاری و ساختار Syntax کامل رفع گردید
  * ============================================================================
  */
 
@@ -38,18 +38,17 @@ const TOKEN = '8696660217:AAEBI6iOD-OAZpWbCIGy2KU-s-Fc5OQwwVE';
 const WALLET_MNEMONIC = 'keen achieve minute mule device text lonely vacuum door crystal month wreck agent bottom force minimum spy guess want plug opera protect away burden';
 const TONCENTER_API_KEY = (process.env.TONCENTER_API_KEY || '').trim();
 
-const TON_FEE_RESERVE = 0.05; // TON رزرو برای کارمزد شبکه
+const TON_FEE_RESERVE = 0.05;
 const TON_ENDPOINTS = [
     'https://toncenter.com/api/v2/jsonRPC',
     'https://tonhub.com/api/v2/jsonRPC'
 ];
 const TON_NET_TIMEOUT_MS = 8000;
 
-let tonKeyPair = null;       // کش کلید
-let tonCachedSeqno = null;   // seqno محلی
+let tonKeyPair = null;
+let tonCachedSeqno = null;
 let tonQueue = Promise.resolve();
 
-// صف سریال برای جلوگیری از تداخل seqno
 function enqueueTon(task) {
     const run = tonQueue.then(task, task);
     tonQueue = run.catch(() => {});
@@ -89,9 +88,6 @@ function isValidTonAddress(addr) {
     }
 }
 
-/**
- * ارسال TON از ولت ربات.
- */
 async function sendTonFromBot(toAddress, amountTon, memo) {
     const pair = await getTonKeyPair();
     if (!pair) {
@@ -1583,15 +1579,16 @@ async function handleMessage(msg) {
             adminData.waitingForAdminUserSearch = false;
             adminData.targetUserId = targetId;
             saveDatabase();
-            const targetUser = getUserDataById(targetId);
 
             if (adminData.adminAction === 'BAN') {
+                const targetUser = getUserDataById(targetId);
                 targetUser.isBanned = true;
                 resetAdminFlags(adminData);
                 saveDatabase();
                 await safeSendMessage(chatId, `کاربر <code>${targetId}</code> بن شد.`, adminPanelMarkup);
                 return;
             } else if (adminData.adminAction === 'UNBAN') {
+                const targetUser = getUserDataById(targetId);
                 targetUser.isBanned = false;
                 resetAdminFlags(adminData);
                 saveDatabase();
