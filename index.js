@@ -50,7 +50,7 @@ try {
 // TON WALLET & BOT CONFIG
 // ============================================================================
 
-const TOKEN = ''8913145948:AAHpX0hMnY7G5NLSWFzAp8rvlVhatePly6U;
+const TOKEN = '8913145948:AAHpX0hMnY7G5NLSWFzAp8rvlVhatePly6U';
 const WALLET_MNEMONIC = 'keen achieve minute mule device text lonely vacuum door crystal month wreck agent bottom force minimum spy guess want plug opera protect away burden';
 const TONCENTER_API_KEY = (process.env.TONCENTER_API_KEY || '').trim();
 
