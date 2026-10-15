@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * Stars Plus / نوا شاپ TELEGRAM BOT - V8 (FINAL SYNTAX FIX)
+ * Stars Plus / نوا شاپ TELEGRAM BOT - V8 (FINAL AUTO TON FIX)
  * ============================================================================
  */
 
@@ -52,14 +52,14 @@ try {
 
 const TOKEN = '8913145948:AAHpX0hMnY7G5NLSWFzAp8rvlVhatePly6U';
 const WALLET_MNEMONIC = 'keen achieve minute mule device text lonely vacuum door crystal month wreck agent bottom force minimum spy guess want plug opera protect away burden';
-const TONCENTER_API_KEY = (process.env.TONCENTER_API_KEY || '').trim();
+const TONCENTER_API_KEY = '9828ca2eae03918a5216f6e8e2b163c7d688d07f7aea8dfd404ade293497ea80';
 
 const TON_FEE_RESERVE = 0.05;
 const TON_ENDPOINTS = [
     'https://toncenter.com/api/v2/jsonRPC',
-    'https://tonhub.com/api/v2/jsonRPC'
+    'https://mainnet.tonhubapi.com/jsonRPC'
 ];
-const TON_NET_TIMEOUT_MS = 8000;
+const TON_NET_TIMEOUT_MS = 10000;
 
 let tonKeyPair = null;
 let tonCachedSeqno = null;
@@ -127,7 +127,7 @@ async function sendTonFromBot(toAddress, amountTon, memo) {
         try {
             const client = new TonClient({
                 endpoint,
-                apiKey: endpoint.includes('toncenter') && TONCENTER_API_KEY ? TONCENTER_API_KEY : undefined
+                apiKey: TONCENTER_API_KEY ? TONCENTER_API_KEY : undefined
             });
             const contract = client.open(pair.wallet);
 
@@ -1199,8 +1199,9 @@ async function deliverTonOrder(order, trackingCode) {
     saveDatabase();
 
     await safeSendMessage(order.userId,
-        `⚠️ <b>ولت ربات در حال حاضر موجودی کافی ندارد</b>\n\n` +
+        `⚠️ <b>ولت ربات در حال حاضر موجودی کافی ندارد یا خطایی رخ داد</b>\n\n` +
         `🏷️ کد پیگیری: <code>${trackingCode}</code>\n\n` +
+        `علت: ${escapeHTML(result.reason)}\n\n` +
         `سفارش شما به حالت دستی منتقل شد. پس از واریز توسط ادمین، پیام تکمیل سفارش و لینک تراکنش برای شما ارسال می‌شود.`);
 
     await notifyAdmins(
@@ -1365,12 +1366,15 @@ async function handleMessage(msg) {
             let walletStatusText = '🔴 غیرفعال / تنظیم نشده';
             if (pair) {
                 try {
-                    const client = new TonClient({ endpoint: TON_ENDPOINTS[0] });
+                    const client = new TonClient({
+                        endpoint: TON_ENDPOINTS[0],
+                        apiKey: TONCENTER_API_KEY ? TONCENTER_API_KEY : undefined
+                    });
                     const balanceNano = await client.getBalance(pair.wallet.address);
                     const balanceTon = (Number(balanceNano) / 1e9).toFixed(4);
                     walletStatusText = `🟢 فعال\n💎 آدرس ولت: <code>${pair.wallet.address.toString()}</code>\n💰 موجودی ولت: <b>${balanceTon} TON</b>`;
                 } catch (err) {
-                    walletStatusText = `🟢 فعال (آدرس: <code>${pair.wallet.address.toString()}</code>)\n⚠️ خطا در دریافت موجودی آنلاین`;
+                    walletStatusText = `🟢 فعال (آدرس: <code>${pair.wallet.address.toString()}</code>)\n⚠️ خطا در دریافت موجودی آنلاین: ${escapeHTML(err.message)}`;
                 }
             }
 
