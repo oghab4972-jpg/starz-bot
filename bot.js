@@ -1,8 +1,6 @@
 /**
  * ============================================================================
- * Stars Plus / نوا شاپ TELEGRAM BOT - V6 (STRICT SYNTAX CLEANUP)
- * - توکن به صورت مستقیم جاگذاری شد
- * - رفع کامل مشکل SyntaxError در انتهای فایل
+ * Stars Plus / نوا شاپ TELEGRAM BOT - V6 (FIXED TON IMPORTS & DEPLOYMENT)
  * ============================================================================
  */
 
@@ -26,9 +24,27 @@ const https = require('https');
 const http = require('http');
 const path = require('path');
 
-const { TonClient, WalletContractV4, internal, toNano, beginCell } = require('@ton/ton');
-const { mnemonicToPrivateKey } = require('@ton/crypto');
-const { Address } = require('@ton/core');
+// ============================================================================
+// SAFE DYNAMIC IMPORTS FOR TON MODULES
+// ============================================================================
+let TonClient, WalletContractV4, internal, toNano, beginCell, mnemonicToPrivateKey, Address;
+
+try {
+    const tonSdk = require('@ton/ton');
+    TonClient = tonSdk.TonClient;
+    WalletContractV4 = tonSdk.WalletContractV4;
+    internal = tonSdk.internal;
+    toNano = tonSdk.toNano;
+    beginCell = tonSdk.beginCell;
+
+    const tonCrypto = require('@ton/crypto');
+    mnemonicToPrivateKey = tonCrypto.mnemonicToPrivateKey;
+
+    const tonCore = require('@ton/core');
+    Address = tonCore.Address;
+} catch (err) {
+    console.warn('[WARNING] ماژول‌های @ton در پروژه یافت نشدند یا کامل نصب نشده‌اند:', err.message);
+}
 
 // ============================================================================
 // TON WALLET & BOT CONFIG
@@ -71,6 +87,10 @@ function withTimeout(promise, ms, label) {
 
 async function getTonKeyPair() {
     if (tonKeyPair) return tonKeyPair;
+    if (!mnemonicToPrivateKey || !WalletContractV4) {
+        SystemLogger.error('TON', 'ماژول‌های مربوط به TON نصب نیستند.');
+        return null;
+    }
     const words = WALLET_MNEMONIC.split(/\s+/).filter(Boolean);
     if (words.length < 12) return null;
     const key = await mnemonicToPrivateKey(words);
@@ -81,6 +101,7 @@ async function getTonKeyPair() {
 
 function isValidTonAddress(addr) {
     try {
+        if (!Address) return true;
         Address.parse(String(addr || '').trim());
         return true;
     } catch (e) {
@@ -89,6 +110,10 @@ function isValidTonAddress(addr) {
 }
 
 async function sendTonFromBot(toAddress, amountTon, memo) {
+    if (!TonClient || !WalletContractV4 || !internal || !toNano || !beginCell) {
+        return { success: false, manual: true, reason: 'ماژول‌های شبکه TON بر روی سرور نصب نیستند' };
+    }
+
     const pair = await getTonKeyPair();
     if (!pair) {
         return { success: false, manual: true, reason: 'ولت ربات (WALLET_MNEMONIC) تنظیم نشده است' };
@@ -175,7 +200,7 @@ function verifyTonLater(verify, trackingCode) {
 // ============================================================================
 const PORT = process.env.PORT || 10000;
 const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('Stars Plus Bot Web Service is running successfully!\n');
 });
 server.on('error', (err) => {
