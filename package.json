@@ -11,7 +11,6 @@
     "node": ">=18.0.0 <23.0.0"
   },
   "dependencies": {
-    "@ton/core": "^0.59.1",
     "@ton/crypto": "^3.3.0",
     "@ton/ton": "^15.1.0",
     "node-telegram-bot-api": "^0.66.0"
