@@ -1,6 +1,13 @@
 /**
  * ============================================================================
- * Stars Plus / نوا شاپ TELEGRAM BOT - V8 (REAL WALLET & API FIX)
+ * Stars Plus / نوا شاپ TELEGRAM BOT - V10 (WALLET VERSION AUTO-MATCH + ENV SECRETS)
+ *
+ * Required env vars (Render > Environment):
+ *   BOT_TOKEN, WALLET_MNEMONIC, WALLET_ADDRESS, TONCENTER_API_KEY, BRSAPI_KEY
+ * Optional:
+ *   PORT
+ *
+ * npm i node-telegram-bot-api @ton/ton @ton/crypto @ton/core
  * ============================================================================
  */
 
@@ -10,6 +17,19 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
     console.error('[FATAL-GUARD] Unhandled Rejection:', reason && reason.stack ? reason.stack : reason);
 });
+
+// ============================================================================
+// LOGGER (defined first so every module can use it)
+// ============================================================================
+class SystemLogger {
+    static info(context, message) {
+        console.log(`[INFO] [${new Date().toISOString()}] [${context}] - ${message}`);
+    }
+    static error(context, message, err = null) {
+        console.error(`[ERROR] [${new Date().toISOString()}] [${context}] - ${message}`);
+        if (err && err.message) console.error(`       Details: ${err.message}`);
+    }
+}
 
 let TelegramModule;
 try {
@@ -25,14 +45,15 @@ const http = require('http');
 const path = require('path');
 
 // ============================================================================
-// SAFE DYNAMIC IMPORTS FOR TON MODULES
+// TON SDK IMPORTS
 // ============================================================================
-let TonClient, WalletContractV4, internal, toNano, beginCell, mnemonicToPrivateKey, Address;
+let TonClient, WalletContractV4, WalletContractV5R1, internal, toNano, beginCell, mnemonicToPrivateKey, Address;
 
 try {
     const tonSdk = require('@ton/ton');
     TonClient = tonSdk.TonClient;
     WalletContractV4 = tonSdk.WalletContractV4;
+    WalletContractV5R1 = tonSdk.WalletContractV5R1;
     internal = tonSdk.internal;
     toNano = tonSdk.toNano;
     beginCell = tonSdk.beginCell;
@@ -43,16 +64,19 @@ try {
     const tonCore = require('@ton/core');
     Address = tonCore.Address;
 } catch (err) {
-    console.warn('[WARNING] ماژول‌های @ton در پروژه یافت نشدند یا کامل نصب نشده‌اند:', err.message);
+    SystemLogger.error('TON', 'ماژول‌های @ton نصب یا لود نشده‌اند. npm i @ton/ton @ton/crypto @ton/core', err);
 }
 
 // ============================================================================
-// TON WALLET & BOT CONFIG (REAL DATA)
+// SECRETS & CONFIG (from environment only - never hardcode secrets)
 // ============================================================================
+const TOKEN = process.env.BOT_TOKEN || '';
+const WALLET_MNEMONIC = process.env.WALLET_MNEMONIC || '';
+const WALLET_ADDRESS = (process.env.WALLET_ADDRESS || '').trim();
+const TONCENTER_API_KEY = process.env.TONCENTER_API_KEY || '';
+const BRSAPI_KEY = process.env.BRSAPI_KEY || '';
 
-const TOKEN = '8913145948:AAHpX0hMnY7G5NLSWFzAp8rvlVhatePly6U';
-const WALLET_MNEMONIC = 'keen achieve minute mule device text lonely vacuum door crystal month wreck agent bottom force minimum spy guess want plug opera protect away burden';
-const TONCENTER_API_KEY = '9828ca2eae03918a5216f6e8e2b163c7d688d07f7aea8dfd404ade293497ea80';
+const TOKEN_LOOKS_VALID = /^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(TOKEN);
 
 const TON_FEE_RESERVE = 0.05;
 const TON_ENDPOINTS = [
@@ -61,7 +85,12 @@ const TON_ENDPOINTS = [
 ];
 const TON_NET_TIMEOUT_MS = 10000;
 
+// ============================================================================
+// TON WALLET (auto-detect correct contract version)
+// ============================================================================
 let tonKeyPair = null;
+let tonInitError = '';
+let tonCandidatesInfo = [];
 let tonCachedSeqno = null;
 let tonQueue = Promise.resolve();
 
@@ -85,17 +114,51 @@ function withTimeout(promise, ms, label) {
     ]).finally(() => clearTimeout(timer));
 }
 
+/**
+ * One mnemonic can produce different addresses depending on the wallet contract
+ * version (V5R1 is what current Tonkeeper uses, V4R2 is older). We build both and
+ * pick the one that matches WALLET_ADDRESS. If WALLET_ADDRESS is not set, V5R1 is used.
+ */
 async function getTonKeyPair() {
     if (tonKeyPair) return tonKeyPair;
-    if (!mnemonicToPrivateKey || !WalletContractV4) {
-        SystemLogger.error('TON', 'ماژول‌های مربوط به TON نصب نیستند.');
+    if (tonInitError) return null;
+
+    if (!mnemonicToPrivateKey || !WalletContractV5R1 || !WalletContractV4) {
+        tonInitError = 'ماژول‌های @ton نصب نیستند';
+        SystemLogger.error('TON', tonInitError);
         return null;
     }
+
     const words = WALLET_MNEMONIC.split(/\s+/).filter(Boolean);
-    if (words.length < 12) return null;
+    if (words.length !== 24 && words.length !== 12) {
+        tonInitError = 'WALLET_MNEMONIC تنظیم نشده یا تعداد کلمات اشتباه است';
+        SystemLogger.error('TON', tonInitError);
+        return null;
+    }
+
     const key = await mnemonicToPrivateKey(words);
-    const wallet = WalletContractV4.create({ publicKey: key.publicKey, workchain: 0 });
-    tonKeyPair = { key, wallet };
+    const candidates = [
+        { version: 'V5R1', wallet: WalletContractV5R1.create({ publicKey: key.publicKey, workchain: 0 }) },
+        { version: 'V4R2', wallet: WalletContractV4.create({ publicKey: key.publicKey, workchain: 0 }) }
+    ];
+    tonCandidatesInfo = candidates.map(c => ({ version: c.version, address: c.wallet.address.toString({ bounceable: false }) }));
+
+    let chosen = null;
+    if (WALLET_ADDRESS && Address) {
+        const target = Address.parse(WALLET_ADDRESS);
+        chosen = candidates.find(c => c.wallet.address.equals(target)) || null;
+        if (!chosen) {
+            tonInitError = 'این mnemonic با WALLET_ADDRESS مطابقت ندارد';
+            SystemLogger.error('TON', tonInitError);
+            return null;
+        }
+    } else {
+        chosen = candidates[0];
+        SystemLogger.info('TON', 'WALLET_ADDRESS تنظیم نشده؛ از V5R1 استفاده می‌شود.');
+    }
+
+    SystemLogger.info('TON', `ولت انتخاب شد: ${chosen.version} - ${chosen.wallet.address.toString({ bounceable: false })}`);
+    tonKeyPair = { key, wallet: chosen.wallet, version: chosen.version };
     return tonKeyPair;
 }
 
@@ -109,14 +172,24 @@ function isValidTonAddress(addr) {
     }
 }
 
+async function getSeqnoSafe(client, contract) {
+    try {
+        const deployed = await withTimeout(client.isContractDeployed(contract.address), TON_NET_TIMEOUT_MS, 'deployed');
+        if (!deployed) return 0;
+    } catch (e) {
+        // ignore and try seqno directly
+    }
+    return withTimeout(contract.getSeqno(), TON_NET_TIMEOUT_MS, 'seqno');
+}
+
 async function sendTonFromBot(toAddress, amountTon, memo) {
-    if (!TonClient || !WalletContractV4 || !internal || !toNano || !beginCell) {
+    if (!TonClient || !WalletContractV5R1 || !internal || !toNano || !beginCell) {
         return { success: false, manual: true, reason: 'ماژول‌های شبکه TON بر روی سرور نصب نیستند' };
     }
 
     const pair = await getTonKeyPair();
     if (!pair) {
-        return { success: false, manual: true, reason: 'ولت ربات (WALLET_MNEMONIC) تنظیم نشده است' };
+        return { success: false, manual: true, reason: tonInitError || 'ولت ربات تنظیم نشده است' };
     }
 
     const amountNano = toNano(String(amountTon));
@@ -139,7 +212,7 @@ async function sendTonFromBot(toAddress, amountTon, memo) {
 
             const seqno = tonCachedSeqno !== null
                 ? tonCachedSeqno
-                : await withTimeout(contract.getSeqno(), TON_NET_TIMEOUT_MS, 'seqno');
+                : await getSeqnoSafe(client, contract);
 
             const body = beginCell()
                 .storeUint(0, 32)
@@ -213,8 +286,6 @@ server.listen(PORT, () => {
 // ============================================================================
 // CONFIGURATION & CONSTANTS
 // ============================================================================
-
-const TOKEN_LOOKS_VALID = /^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(TOKEN);
 const ADMIN_ID_USERNAME = '@shantiaNFT';
 const ADMIN_NUMERIC_ID = 8750484397;
 const EXTRA_ADMIN_ID = '8942987641';
@@ -252,16 +323,6 @@ function isBtn(text, label) {
     return !!text && norm(text) === norm(label);
 }
 
-class SystemLogger {
-    static info(context, message) {
-        console.log(`[INFO] [${new Date().toISOString()}] [${context}] - ${message}`);
-    }
-    static error(context, message, err = null) {
-        console.error(`[ERROR] [${new Date().toISOString()}] [${context}] - ${message}`);
-        if (err && err.message) console.error(`       Details: ${err.message}`);
-    }
-}
-
 const TelegramBot = typeof TelegramModule === 'function'
     ? TelegramModule
     : (
@@ -272,7 +333,7 @@ const TelegramBot = typeof TelegramModule === 'function'
     );
 
 if (!TOKEN_LOOKS_VALID) {
-    SystemLogger.error('Token', '❌ توکن ربات نامعتبر یا تنظیم نشده است!');
+    SystemLogger.error('Token', '❌ BOT_TOKEN در متغیرهای محیطی تنظیم نشده یا نامعتبر است!');
 }
 
 const bot = new TelegramBot(TOKEN, {
@@ -767,7 +828,10 @@ function consumeDiscount(userData) {
     saveDatabase();
 }
 
-const BRSAPI_URL = 'https://Api.BrsApi.ir/Market/Cryptocurrency.php?key=BrcH3cX7vcbuX9tE7Pr8dJGsjkeKKJTt';
+// ============================================================================
+// MARKET PRICES (BrsApi)
+// ============================================================================
+const BRSAPI_URL = `https://Api.BrsApi.ir/Market/Cryptocurrency.php?key=${encodeURIComponent(BRSAPI_KEY)}`;
 const PRICE_MARGIN = 1.08;
 const MARKET_CACHE_TTL_MS = 2000;
 const MARKET_FETCH_TIMEOUT_MS = 4000;
@@ -850,6 +914,7 @@ async function getMarket() {
 
     marketInFlight = (async () => {
         try {
+            if (!BRSAPI_KEY) throw new Error('BRSAPI_KEY تنظیم نشده است');
             const fresh = parseMarket(await fetchBrsApiJson(BRSAPI_URL));
             marketCache = { data: fresh, time: Date.now() };
             return fresh;
@@ -897,6 +962,9 @@ async function gramTotal(amountTon) {
     return Math.round(Number(amountTon) * price);
 }
 
+// ============================================================================
+// KEYBOARDS
+// ============================================================================
 function getMainKeyboard(isAdmin) {
     const rows = [
         [{ text: '🛒 خرید محصول' }],
@@ -1363,8 +1431,16 @@ async function handleMessage(msg) {
         try {
             const info = await bot.getWebHookInfo();
             const pair = await getTonKeyPair();
-            let walletStatusText = '🔴 غیرفعال / تنظیم نشده';
-            if (pair) {
+
+            let candidatesText = tonCandidatesInfo.length
+                ? tonCandidatesInfo.map(c => `• ${c.version}: <code>${c.address}</code>`).join('\n')
+                : 'ساخته نشد';
+
+            let walletStatusText;
+            if (!pair) {
+                walletStatusText = `🔴 غیرفعال\nعلت: ${escapeHTML(tonInitError || 'نامشخص')}\n\nآدرس‌های ساخته‌شده از mnemonic:\n${candidatesText}`;
+            } else {
+                const myAddr = pair.wallet.address.toString({ bounceable: false });
                 try {
                     const client = new TonClient({
                         endpoint: TON_ENDPOINTS[0],
@@ -1372,9 +1448,9 @@ async function handleMessage(msg) {
                     });
                     const balanceNano = await client.getBalance(pair.wallet.address);
                     const balanceTon = (Number(balanceNano) / 1e9).toFixed(4);
-                    walletStatusText = `🟢 فعال\n💎 آدرس ولت: <code>${pair.wallet.address.toString()}</code>\n💰 موجودی ولت: <b>${balanceTon} TON</b>`;
+                    walletStatusText = `🟢 فعال (${pair.version})\n💎 آدرس ولت: <code>${myAddr}</code>\n💰 موجودی ولت: <b>${balanceTon} TON</b>`;
                 } catch (err) {
-                    walletStatusText = `🟢 فعال (آدرس: <code>${pair.wallet.address.toString()}</code>)\n⚠️ خطا در دریافت موجودی آنلاین: ${escapeHTML(err.message)}`;
+                    walletStatusText = `🟢 فعال (${pair.version}) آدرس: <code>${myAddr}</code>\n⚠️ خطا در دریافت موجودی: ${escapeHTML(err.message)}`;
                 }
             }
 
@@ -2423,368 +2499,4 @@ async function handleMessage(msg) {
         });
     }
     else if (text === '👤 پشتیبانی مستقیم') {
-        await safeSendMessage(chatId, `ارتباط با ادمین:\n${ADMIN_ID_USERNAME}`, backKeyboard);
-    }
-    else if (text === '🤖 پشتیبانی هوشمند') {
-        userData.waitingForSmartSupport = true;
-        saveDatabase();
-        await safeSendMessage(chatId, `🤖 سلام! من پشتیبانی هوشمند نوا شاپ هستم.\nلطفاً سوال خود را بپرسید:`, backKeyboard);
-    }
-    else if (text === '🎫 ارسال تیکت (غیرمستقیم)') {
-        userData.waitingForTicket = true;
-        saveDatabase();
-        await safeSendMessage(chatId, `پیام خود را ارسال کنید:`, backKeyboard);
-    }
-    else if (text === '📦 سفارش های اخیر من' || text === 'سفارش های اخیر من 📥') {
-        const userOrders = Object.entries(db.orders).filter(([, order]) => String(order.userId) === String(chatId));
-        if (userOrders.length === 0) {
-            await safeSendMessage(chatId, 'شما سفارشی ثبت نکرده‌اید.', backKeyboard);
-        } else {
-            let msgText = `<b>[ سفارش‌های اخیر شما ]</b>\n\n`;
-            userOrders.slice(-5).forEach(([code, order], idx) => {
-                msgText += `${idx + 1}. 📦 کد: <code>${escapeHTML(code)}</code>\n   محصول: ${escapeHTML(order.giftName)}\n   مبلغ: ${order.amount.toLocaleString()} تومان\n\n`;
-            });
-            await safeSendMessage(chatId, msgText, backKeyboard);
-        }
-    }
-    else if (text === '📦 سفارش های معلق من') {
-        const userOrders = Object.entries(db.orders).filter(([, order]) =>
-            String(order.userId) === String(chatId) && (order.status === 'pending' || order.status === 'manual_pending'));
-        if (userOrders.length === 0) {
-            await safeSendMessage(chatId, 'سفارش معلقی ندارید.', backKeyboard);
-        } else {
-            let msgText = `<b>[ سفارش‌های معلق شما ]</b>\n\n`;
-            userOrders.forEach(([code, order], idx) => {
-                msgText += `${idx + 1}. 📦 کد: <code>${escapeHTML(code)}</code>\n   محصول: ${escapeHTML(order.giftName)}\n\n`;
-            });
-            await safeSendMessage(chatId, msgText, backKeyboard);
-        }
-    }
-}
-
-// ============================================================================
-// INLINE CALLBACK QUERY HANDLER
-// ============================================================================
-
-bot.on('callback_query', async (callbackQuery) => {
-    try {
-        await handleCallback(callbackQuery);
-    } catch (err) {
-        SystemLogger.error('CallbackHandler', `Error while handling callback "${callbackQuery && callbackQuery.data}"`, err);
-        await safeAnswer(callbackQuery.id, { text: '⚠️ خطایی رخ داد، دوباره تلاش کنید.', show_alert: true });
-    }
-});
-
-async function handleCallback(callbackQuery) {
-    const action = callbackQuery.data || '';
-    const msg = callbackQuery.message;
-    const fromId = callbackQuery.from.id;
-    SystemLogger.info('Callback', `received from=${fromId} data=${action}`);
-
-    if (!msg) {
-        await safeAnswer(callbackQuery.id);
-        return;
-    }
-
-    const chatId = msg.chat.id;
-    const userData = getUserDataById(fromId);
-    const isAdmin = isUserAdmin(fromId);
-
-    if (action === 'ton_mode_wallet' || action === 'ton_mode_account') {
-        userData.tonOrderMode = action === 'ton_mode_wallet' ? 'wallet' : 'account';
-        userData.currentShopState = 'gram_wallet_flow';
-        userData.waitingForGramAmount = true;
-        saveDatabase();
-
-        await safeAnswer(callbackQuery.id);
-        await safeSendMessage(chatId, 'تعداد تون ( TON ) مورد نظر را وارد کنید:', getBackKeyboard());
-        return;
-    }
-
-    if (action === 'check_join') {
-        const isMember = await checkMembership(fromId);
-        if (isMember) {
-            await safeAnswer(callbackQuery.id);
-            await safeDeleteMessage(chatId, msg.message_id);
-            await safeSendMessage(chatId, '✅ عضویت شما تایید شد!', getMainKeyboard(isAdmin));
-        } else {
-            await safeAnswer(callbackQuery.id, { text: '❌ شما هنوز در کانال ربات عضو نشده‌اید!', show_alert: true });
-        }
-        return;
-    }
-
-    if (!isAdmin) {
-        const isMember = await checkMembership(fromId);
-        if (!isMember) {
-            await safeAnswer(callbackQuery.id, { text: '❌ لطفاً ابتدا در کانال عضو شوید!', show_alert: true });
-            return;
-        }
-    }
-
-    if (action.startsWith('add_balance_')) {
-        const shortage = parseInt(action.replace('add_balance_', ''));
-        if (isNaN(shortage) || shortage <= 0) {
-            await safeAnswer(callbackQuery.id, { text: 'خطا در محاسبه مبلغ.', show_alert: true });
-            return;
-        }
-        userData.waitingForAmount = false;
-        userData.lastAmount = shortage;
-        userData.waitingForReceipt = true;
-        saveDatabase();
-
-        const rialAmount = shortage * 10;
-        await safeAnswer(callbackQuery.id);
-        await safeSendMessage(chatId,
-            `💳 <b>افزایش موجودی تکمیلی</b>\n\n` +
-            `مبلغ انتخابی: ${shortage.toLocaleString()} تومان\n` +
-            `مبلغ قابل واریز: <b>${rialAmount.toLocaleString()} ریال</b>\n\n` +
-            `شماره کارت:\n<code>${CARD_NUMBER}</code>\n` +
-            `به نام: ${CARD_OWNER}`,
-            {
-                reply_markup: {
-                    inline_keyboard: [
-                        [{ text: '📋 کپی شماره کارت', copy_text: { text: CARD_NUMBER } }],
-                        [{ text: '📋 کپی دقیق مبلغ (ریال)', copy_text: { text: String(rialAmount) } }]
-                    ]
-                }
-            });
-        await safeSendMessage(chatId, '📸 پس از واریز، عکس رسید را همین‌جا ارسال کنید.', getBackKeyboard());
-        return;
-    }
-
-    if (action === 'track_receipt_main') {
-        await safeAnswer(callbackQuery.id);
-        if (userData.lastReceiptCode) {
-            const status = db.processedReceipts[userData.lastReceiptCode] || 'pending';
-            let statusFa = 'در حال بررسی توسط مدیریت ⏳';
-            if (status === 'approved') statusFa = 'تایید شده ✅';
-            if (status === 'rejected') statusFa = 'رد شده ❌';
-
-            await safeSendMessage(chatId,
-                `<b>[ وضعیت آخرین رسید شما ]</b>\n\n` +
-                `🏷️ شماره رسید: <code>${userData.lastReceiptCode}</code>\n` +
-                `💰 مبلغ: ${userData.lastReceiptAmount.toLocaleString()} تومان\n` +
-                `⏰ زمان ارسال: ${userData.lastReceiptTime}\n` +
-                `📊 وضعیت: ${statusFa}`);
-        } else {
-            await safeSendMessage(chatId, 'شما هیچ رسید فعال یا در حال بررسی ندارید.');
-        }
-        return;
-    }
-
-    // ---------------- عملیات مدیریت (تایید/رد رسید و سفارش) ----------------
-    if (isAdmin) {
-        if (action.startsWith('approve_receipt_')) {
-            const parts = action.replace('approve_receipt_', '').split('_');
-            const targetUserId = parts[0];
-            const amount = parseInt(parts[1]);
-            const receiptCode = parts[2];
-
-            if (db.processedReceipts[receiptCode]) {
-                await safeAnswer(callbackQuery.id, { text: 'این رسید قبلاً بررسی شده است.', show_alert: true });
-                return;
-            }
-
-            db.processedReceipts[receiptCode] = 'approved';
-            const targetUser = getUserDataById(targetUserId);
-            targetUser.wallet += amount;
-
-            db.approvedReceiptsHistory.push({
-                userId: targetUserId,
-                amount: amount,
-                receiptCode: receiptCode,
-                time: getFormattedTime()
-            });
-            saveDatabase();
-
-            await safeAnswer(callbackQuery.id, { text: 'رسید تایید و موجودی افزوده شد.' });
-            await editAdminMessage(msg, (msg.caption || msg.text || '') + `\n\n✅ <b>توسط مدیریت تایید شد.</b>`);
-            await safeSendMessage(targetUserId, `✅ رسید شما به مبلغ ${amount.toLocaleString()} تومان تایید شد و موجودی شما شارژ گردید.`);
-
-            if (targetUser.pendingOrderToAutoPlace) {
-                const pending = targetUser.pendingOrderToAutoPlace;
-                targetUser.pendingOrderToAutoPlace = null;
-                saveDatabase();
-
-                if (pending.type === 'gram') {
-                    const total = await gramTotal(pending.gramAmount);
-                    if (targetUser.wallet >= total) {
-                        targetUser.wallet -= total;
-                        const trackingCode = 'TON-' + Math.floor(10000 + Math.random() * 90000);
-                        const order = {
-                            userId: targetUserId,
-                            firstName: targetUser.firstName,
-                            giftName: `ارز تون (${pending.gramAmount} TON)`,
-                            count: pending.gramAmount,
-                            recipient: pending.gramWalletAddress,
-                            comment: pending.gramMemo,
-                            amount: total,
-                            time: getFormattedTime(),
-                            status: 'pending',
-                            tonMode: pending.tonOrderMode
-                        };
-                        db.orders[trackingCode] = order;
-                        saveDatabase();
-
-                        await safeSendMessage(targetUserId, `⚡ موجودی شما کافی شد و سفارش TON شما به صورت خودکار ثبت گردید.`);
-                        await deliverTonOrder(order, trackingCode);
-                    }
-                } else if (pending.type === 'star') {
-                    const unitPrice = await fetchStarsPrice();
-                    const total = Math.round(unitPrice * pending.starCount);
-                    if (targetUser.wallet >= total) {
-                        targetUser.wallet -= total;
-                        const trackingCode = 'STR-' + Math.floor(10000 + Math.random() * 90000);
-                        const now = getFormattedTime();
-                        db.orders[trackingCode] = {
-                            userId: targetUserId,
-                            firstName: targetUser.firstName,
-                            giftName: `استارز تلگرام (${pending.starCount} عدد)`,
-                            count: pending.starCount,
-                            recipient: pending.starRecipient,
-                            comment: 'ندارد',
-                            amount: total,
-                            time: now,
-                            status: 'pending'
-                        };
-                        saveDatabase();
-
-                        await safeSendMessage(targetUserId, `⭐ موجودی شما کافی شد و سفارش استارز شما ثبت گردید.\nکد پیگیری: <code>${trackingCode}</code>`);
-                        await notifyAdmins(
-                            `<b>[ سفارش خودکار استارز ]</b>\n\n` +
-                            `👤 کاربر: ${escapeHTML(targetUser.firstName)}\n` +
-                            `🆔 آیدی: <code>${targetUserId}</code>\n` +
-                            `🏷️ کد: <code>${trackingCode}</code>\n` +
-                            `💫 تعداد: ${pending.starCount}\n` +
-                            `📥 دریافت‌کننده: @${escapeHTML(pending.starRecipient)}\n` +
-                            `💰 مبلغ: ${total.toLocaleString()} تومان`,
-                            { reply_markup: { inline_keyboard: [[
-                                { text: '✅ انجام شد', callback_data: `order_done_${trackingCode}` },
-                                { text: '❌ رد شد', callback_data: `order_reject_${trackingCode}` }
-                            ]] } });
-                    }
-                } else if (pending.type === 'gift') {
-                    const usdtToman = await getUsdtTomanPrice();
-                    const total = Math.round(pending.selectedGiftStars * STAR_USD * usdtToman * PRICE_MARGIN);
-                    if (targetUser.wallet >= total) {
-                        targetUser.wallet -= total;
-                        const trackingCode = 'STZ-' + Math.floor(10000 + Math.random() * 90000);
-                        const now = getFormattedTime();
-                        db.orders[trackingCode] = {
-                            userId: targetUserId,
-                            firstName: targetUser.firstName,
-                            giftName: pending.selectedGiftName,
-                            count: 1,
-                            recipient: pending.recipientUsername,
-                            comment: pending.commentText,
-                            amount: total,
-                            time: now,
-                            status: 'pending'
-                        };
-                        saveDatabase();
-
-                        await safeSendMessage(targetUserId, `🎁 موجودی شما کافی شد و سفارش گیفت شما ثبت گردید.\nکد پیگیری: <code>${trackingCode}</code>`);
-                        await notifyAdmins(
-                            `<b>[ سفارش خودکار گیفت ]</b>\n\n` +
-                            `👤 کاربر: ${escapeHTML(targetUser.firstName)}\n` +
-                            `🆔 آیدی: <code>${targetUserId}</code>\n` +
-                            `🏷️ کد: <code>${trackingCode}</code>\n` +
-                            `🎁 نام: ${escapeHTML(pending.selectedGiftName)}\n` +
-                            `📥 دریافت‌کننده: @${escapeHTML(pending.recipientUsername)}\n` +
-                            `💰 مبلغ: ${total.toLocaleString()} تومان`,
-                            { reply_markup: { inline_keyboard: [[
-                                { text: '✅ انجام شد', callback_data: `order_done_${trackingCode}` },
-                                { text: '❌ رد شد', callback_data: `order_reject_${trackingCode}` }
-                            ]] } });
-                    }
-                }
-            }
-            return;
-        }
-
-        if (action.startsWith('reject_receipt_')) {
-            const parts = action.replace('reject_receipt_', '').split('_');
-            const targetUserId = parts[0];
-            const receiptCode = parts[1];
-
-            if (db.processedReceipts[receiptCode]) {
-                await safeAnswer(callbackQuery.id, { text: 'این رسید قبلاً بررسی شده است.', show_alert: true });
-                return;
-            }
-
-            const adminObj = getUserDataById(fromId);
-            adminObj.waitingForReceiptRejectReason = true;
-            adminObj.rejectTargetId = targetUserId;
-            adminObj.rejectReceiptCode = receiptCode;
-            saveDatabase();
-
-            await safeAnswer(callbackQuery.id);
-            await editAdminMessage(msg, (msg.caption || msg.text || '') + `\n\n❌ <b>توسط مدیریت رد شد. (در حال ارسال دلیل...)</b>`);
-            await safeSendMessage(fromId, `لطفاً دلیل رد رسید <code>${receiptCode}</code> را ارسال کنید:`, getBackKeyboard());
-            return;
-        }
-
-        if (action.startsWith('reply_')) {
-            const targetUserId = action.replace('reply_', '');
-            const adminObj = getUserDataById(fromId);
-            adminObj.adminReplyingTo = targetUserId;
-            saveDatabase();
-
-            await safeAnswer(callbackQuery.id);
-            await safeSendMessage(fromId, `لطفاً پاسخ خود را برای کاربر <code>${targetUserId}</code> ارسال کنید:`, getBackKeyboard());
-            return;
-        }
-
-        if (action.startsWith('order_done_')) {
-            const trackingCode = action.replace('order_done_', '');
-            const order = db.orders[trackingCode];
-
-            if (!order) {
-                await safeAnswer(callbackQuery.id, { text: 'سفارش یافت نشد.', show_alert: true });
-                return;
-            }
-
-            if (order.status === 'completed') {
-                await safeAnswer(callbackQuery.id, { text: 'این سفارش قبلاً تکمیل شده است.', show_alert: true });
-                return;
-            }
-
-            order.status = 'completed';
-            order.paidAt = getFormattedTime();
-            saveDatabase();
-
-            await safeAnswer(callbackQuery.id, { text: 'سفارش به‌عنوان انجام‌شده علامت زده شد.' });
-            await editAdminMessage(msg, (msg.text || msg.caption || '') + `\n\n✅ <b>تکمیل و ارسال شد.</b>`);
-            await safeSendMessage(order.userId, `✅ سفارش شما با کد پیگیری <code>${trackingCode}</code> با موفقیت انجام شد.`);
-            await sendChannelReport(order, order.txLink || null);
-            return;
-        }
-
-            if (action.startsWith('order_reject_')) {
-            const trackingCode = action.replace('order_reject_', '');
-            const order = db.orders[trackingCode];
-
-            if (!order) {
-                await safeAnswer(callbackQuery.id, { text: 'سفارش یافت نشد.', show_alert: true });
-                return;
-            }
-
-            if (order.status === 'rejected') {
-                await safeAnswer(callbackQuery.id, { t: 'این سفارش قبلاً رد شده است.', show_alert: true });
-                return;
-            }
-
-            const adminObj = getUserDataById(fromId);
-            adminObj.waitingForOrderRejectReason = true;
-            adminObj.rejectOrderCode = trackingCode;
-            saveDatabase();
-
-            await safeAnswer(callbackQuery.id);
-            await editAdminMessage(msg, (msg.text || msg.caption || '') + `\n\n❌ <b>توسط مدیریت رد شد. (در حال ثبت دلیل...)</b>`);
-            await safeSendMessage(fromId, `لطفاً دلیل رد سفارش <code>${trackingCode}</code> را ارسال کنید:`, getBackKeyboard());
-            return;
-        }
-    }
-
-    await safeAnswer(callbackQuery.id);
-}
+        await safeSendMessage(chatId, `ارتباط با ادمین:\n${ADMIN_ID_USER
