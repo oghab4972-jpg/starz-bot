@@ -2756,7 +2756,7 @@ async function handleCallback(callbackQuery) {
             return;
         }
 
-        if (action.startsWith('order_reject_')) {
+            if (action.startsWith('order_reject_')) {
             const trackingCode = action.replace('order_reject_', '');
             const order = db.orders[trackingCode];
 
