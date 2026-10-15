@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * Stars Plus / نوا شاپ TELEGRAM BOT - V8 (FINAL AUTO TON FIX)
+ * Stars Plus / نوا شاپ TELEGRAM BOT - V8 (REAL WALLET & API FIX)
  * ============================================================================
  */
 
@@ -47,7 +47,7 @@ try {
 }
 
 // ============================================================================
-// TON WALLET & BOT CONFIG
+// TON WALLET & BOT CONFIG (REAL DATA)
 // ============================================================================
 
 const TOKEN = '8913145948:AAHpX0hMnY7G5NLSWFzAp8rvlVhatePly6U';
@@ -2770,7 +2770,7 @@ async function handleCallback(callbackQuery) {
             }
 
             if (order.status === 'rejected') {
-                await safeAnswer(callbackQuery.id, { text: 'این سفارش قبلاً رد شده است.', show_alert: true });
+                await safeAnswer(callbackQuery.id, { t: 'این سفارش قبلاً رد شده است.', show_alert: true });
                 return;
             }
 
