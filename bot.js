@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * Stars Plus / نوا شاپ TELEGRAM BOT - V7 (SYNTAX FULLY FIXED)
+ * Stars Plus / نوا شاپ TELEGRAM BOT - V8 (FINAL SYNTAX FIX)
  * ============================================================================
  */
 
@@ -2783,4 +2783,4 @@ async function handleCallback(callbackQuery) {
     }
 
     await safeAnswer(callbackQuery.id);
-});
+}
