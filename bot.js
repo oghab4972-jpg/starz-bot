@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * Stars Plus / نوا شاپ TELEGRAM BOT - V6 (FIXED TON IMPORTS & DEPLOYMENT)
+ * Stars Plus / نوا شاپ TELEGRAM BOT - V6 (FIXED SYNTAX & DEPLOYMENT)
  * ============================================================================
  */
 
